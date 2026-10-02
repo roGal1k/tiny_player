@@ -1,0 +1,284 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import '../../domain/models/track.dart';
+import '../../domain/providers/music_provider.dart';
+
+class YouTubeProvider implements MusicProvider {
+  final YoutubeExplode _yt;
+  final bool _ownsClient;
+
+  YouTubeProvider({YoutubeExplode? client})
+      : _yt = client ?? YoutubeExplode(),
+        _ownsClient = client == null;
+
+  @override
+  String get providerId => 'youtube';
+
+  @override
+  String get name => 'YouTube Music';
+
+  @override
+  Future<bool> authenticate() async => true;
+
+  @override
+  Future<List<Track>> search(String query, {Map<String, dynamic>? filters}) async {
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return [];
+
+    // Try searchContent first
+    try {
+      final searchContentList = await _yt.search.searchContent(cleanQuery);
+      final tracks = <Track>[];
+
+      for (final item in searchContentList) {
+        if (item is SearchVideo) {
+          final thumb = item.thumbnails.isNotEmpty
+              ? item.thumbnails.last.url.toString()
+              : 'https://img.youtube.com/vi/${item.id.value}/hqdefault.jpg';
+
+          tracks.add(Track(
+            id: item.id.value,
+            providerId: providerId,
+            title: item.title,
+            artist: item.author,
+            duration: _parseDuration(item.duration),
+            artworkUrl: thumb,
+            isStreamable: true,
+            isDownloadable: true,
+            qualityOptions: const ['mp4', 'm4a', 'webm'],
+            sourceUrl: 'https://www.youtube.com/watch?v=${item.id.value}',
+          ));
+        }
+      }
+
+      if (tracks.isNotEmpty) return tracks;
+    } catch (_) {}
+
+    // Fallback to standard search
+    try {
+      final results = await _yt.search.search(cleanQuery);
+      return results.map((video) {
+        final thumb = video.thumbnails.highResUrl.isNotEmpty
+            ? video.thumbnails.highResUrl
+            : (video.thumbnails.standardResUrl.isNotEmpty
+                ? video.thumbnails.standardResUrl
+                : 'https://img.youtube.com/vi/${video.id.value}/hqdefault.jpg');
+
+        return Track(
+          id: video.id.value,
+          providerId: providerId,
+          title: video.title,
+          artist: video.author,
+          duration: video.duration ?? Duration.zero,
+          artworkUrl: thumb,
+          isStreamable: true,
+          isDownloadable: true,
+          qualityOptions: const ['mp4', 'm4a', 'webm'],
+          sourceUrl: 'https://www.youtube.com/watch?v=${video.id.value}',
+        );
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('YouTube search error: $e');
+      }
+      return [];
+    }
+  }
+
+  @override
+  Future<Track?> getTrack(String id) async {
+    try {
+      final video = await _yt.videos.get(id);
+      final thumb = video.thumbnails.highResUrl.isNotEmpty
+          ? video.thumbnails.highResUrl
+          : 'https://img.youtube.com/vi/${video.id.value}/hqdefault.jpg';
+
+      return Track(
+        id: video.id.value,
+        providerId: providerId,
+        title: video.title,
+        artist: video.author,
+        duration: video.duration ?? Duration.zero,
+        artworkUrl: thumb,
+        isStreamable: true,
+        isDownloadable: true,
+        qualityOptions: const ['mp4', 'm4a', 'webm'],
+        sourceUrl: 'https://www.youtube.com/watch?v=${video.id.value}',
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('YouTube getTrack error for $id: $e');
+      }
+      return null;
+    }
+  }
+
+  static Directory get cacheDir =>
+      Directory(path.join(Directory.systemTemp.path, 'core_player_yt_cache'));
+
+  static final Map<String, Future<String>> _inProgress = {};
+  static bool? _ffmpegAvailable;
+
+  static Future<bool> isFfmpegAvailable() async {
+    if (_ffmpegAvailable != null) return _ffmpegAvailable!;
+    try {
+      final res = await Process.run('which', ['ffmpeg']);
+      _ffmpegAvailable = res.exitCode == 0;
+    } catch (_) {
+      _ffmpegAvailable = false;
+    }
+    return _ffmpegAvailable!;
+  }
+
+  File _cacheFileFor(String trackId) =>
+      File(path.join(cacheDir.path, '$trackId.m4a'));
+
+  @override
+  Future<String> getStreamUrl(Track track) async {
+    // 1. Check if extraction is already in flight
+    if (_inProgress.containsKey(track.id)) {
+      return _inProgress[track.id]!;
+    }
+
+    // 2. Check if clean audio is already cached
+    final cached = _cacheFileFor(track.id);
+    if (await cached.exists()) {
+      final length = await cached.length();
+      if (length > 50000) {
+        return cached.path;
+      }
+    }
+
+    final future = _extractAudioTrack(track);
+    _inProgress[track.id] = future;
+    try {
+      final result = await future;
+      return result;
+    } finally {
+      _inProgress.remove(track.id);
+    }
+  }
+
+  /// Preloads the audio track in background for queue gapless playback.
+  Future<void> preloadTrack(Track track) async {
+    try {
+      final cached = _cacheFileFor(track.id);
+      if (await cached.exists() && (await cached.length()) > 50000) {
+        return;
+      }
+      if (_inProgress.containsKey(track.id)) {
+        return;
+      }
+      getStreamUrl(track).catchError((_) => '');
+    } catch (_) {}
+  }
+
+  /// Extracts pure audio track (M4A) using FFmpeg without re-encoding (-c:a copy).
+  /// Guarantees no video track is present, preventing GStreamer from opening video windows.
+  Future<String> _extractAudioTrack(Track track) async {
+    try {
+      final manifest = await _yt.videos.streamsClient.getManifest(VideoId(track.id));
+      final hasFfmpeg = await isFfmpegAvailable();
+      final muxedStreams = manifest.muxed;
+
+      if (hasFfmpeg && muxedStreams.isNotEmpty) {
+        final bestMuxed = muxedStreams.sortByVideoQuality().last;
+        await cacheDir.create(recursive: true);
+        final tmpFile = File(path.join(cacheDir.path, '${track.id}.tmp.m4a'));
+        final targetFile = _cacheFileFor(track.id);
+
+        try {
+          final res = await Process.run('ffmpeg', [
+            '-y',
+            '-reconnect', '1',
+            '-reconnect_streamed', '1',
+            '-reconnect_delay_max', '5',
+            '-i', bestMuxed.url.toString(),
+            '-vn',
+            '-c:a', 'copy',
+            tmpFile.path,
+          ]);
+
+          if (res.exitCode == 0 &&
+              await tmpFile.exists() &&
+              (await tmpFile.length()) > 50000) {
+            if (await targetFile.exists()) {
+              await targetFile.delete();
+            }
+            await tmpFile.rename(targetFile.path);
+            return targetFile.path;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('FFmpeg audio extraction error for ${track.id}: $e');
+          }
+        } finally {
+          if (await tmpFile.exists()) {
+            try {
+              await tmpFile.delete();
+            } catch (_) {}
+          }
+        }
+      }
+
+      // Fallback if FFmpeg is unavailable or extraction fails
+      final audioStreams = manifest.audioOnly;
+      if (audioStreams.isNotEmpty) {
+        return audioStreams.withHighestBitrate().url.toString();
+      }
+
+      final anyAudio = manifest.audio;
+      if (anyAudio.isNotEmpty) {
+        return anyAudio.first.url.toString();
+      }
+
+      if (muxedStreams.isNotEmpty) {
+        return muxedStreams.sortByVideoQuality().last.url.toString();
+      }
+
+      throw Exception('No playable audio streams found for YouTube track ${track.id}');
+    } catch (e) {
+      if (kDebugMode) {
+        print('YouTube getStreamUrl error for ${track.id}: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Returns the progressive video stream URL (MP4) for the "Watch Video" feature.
+  Future<String> getVideoStreamUrl(Track track) async {
+    final manifest = await _yt.videos.streamsClient.getManifest(VideoId(track.id));
+    final muxed = manifest.muxed;
+    if (muxed.isNotEmpty) {
+      return muxed.sortByVideoQuality().last.url.toString();
+    }
+    throw Exception('No video stream found for track ${track.id}');
+  }
+
+  @override
+  Future<List<String>> getDownloadOptions(Track track) async => ['mp4', 'm4a', 'webm'];
+
+  @override
+  Future<List<Track>> getUserLibrary() async => [];
+
+  Duration _parseDuration(String? str) {
+    if (str == null || str.isEmpty) return Duration.zero;
+    final parts = str.split(':').map((e) => int.tryParse(e) ?? 0).toList();
+    if (parts.length == 2) {
+      return Duration(minutes: parts[0], seconds: parts[1]);
+    } else if (parts.length == 3) {
+      return Duration(hours: parts[0], minutes: parts[1], seconds: parts[2]);
+    } else if (parts.length == 1) {
+      return Duration(seconds: parts[0]);
+    }
+    return Duration.zero;
+  }
+
+  void dispose() {
+    if (_ownsClient) {
+      _yt.close();
+    }
+  }
+}
