@@ -342,7 +342,8 @@ void main() {
       expect(switchFinder, findsWidgets);
 
       // Toggle first provider switch
-      await tester.tap(switchFinder.last);
+      final providerTile = find.widgetWithText(SwitchListTile, 'Test Music');
+      await tester.tap(find.descendant(of: providerTile, matching: find.byType(Switch)));
       await tester.pump(const Duration(seconds: 11));
 
       expect(settings.isProviderEnabled('test_provider'), isFalse);

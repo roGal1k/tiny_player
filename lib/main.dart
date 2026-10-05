@@ -22,6 +22,7 @@ import 'data/services/download_manager.dart';
 import 'data/services/genius_lyrics_service.dart';
 import 'data/services/equalizer_service.dart';
 import 'data/services/settings_service.dart';
+import 'data/services/audio_cache_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +45,9 @@ void main() async {
   registry.registerProvider(VkProvider(accessToken: dotenv.env['VK_TOKEN']));
   registry.syncDisabledProviders(settingsService.disabledProviders);
 
+  final audioCacheService = AudioCacheService();
+  await audioCacheService.init();
+
   final localLibraryService = LocalLibraryService();
   final downloadManager = DownloadManager(
     registry: registry,
@@ -63,6 +67,7 @@ void main() async {
         Provider<ProviderRegistry>.value(value: registry),
         Provider<GeniusLyricsService>.value(value: lyricsService),
         ChangeNotifierProvider<SettingsService>.value(value: settingsService),
+        ChangeNotifierProvider<AudioCacheService>.value(value: audioCacheService),
         ChangeNotifierProvider<LocalLibraryService>.value(value: localLibraryService),
         ChangeNotifierProvider<DownloadManager>.value(value: downloadManager),
         ChangeNotifierProvider<EqualizerService>.value(value: equalizerService),
@@ -71,6 +76,7 @@ void main() async {
             registry: registry,
             equalizerService: equalizerService,
             settingsService: settingsService,
+            cacheService: audioCacheService,
           ),
         ),
       ],

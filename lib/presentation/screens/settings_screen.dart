@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../data/services/settings_service.dart';
 import '../../data/services/equalizer_service.dart';
 import '../../data/services/local_library_service.dart';
+import '../../data/services/audio_cache_service.dart';
 import '../../data/providers/provider_registry.dart';
 import '../../data/providers/hitmo_provider.dart';
 import '../controllers/audio_player_controller.dart';
@@ -182,6 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final eq = Provider.of<EqualizerService?>(context);
     final registry = Provider.of<ProviderRegistry?>(context);
     final libraryService = Provider.of<LocalLibraryService?>(context);
+    final cacheService = Provider.of<AudioCacheService?>(context);
 
     if (settings == null) {
       return const Scaffold(
@@ -587,6 +589,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                   icon: const Icon(Icons.refresh, size: 16),
                   label: const Text('Пересканировать библиотеку'),
+                ),
+                const Divider(height: 28),
+
+                // Автокэширование при воспроизведении
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Автокэширование при воспроизведении',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Автоматически сохранять прослушанные треки в офлайн-кэш для мгновенного доступа без интернета',
+                    style: TextStyle(fontSize: 12, color: Colors.white60),
+                  ),
+                  value: settings.autoCacheAudio,
+                  activeColor: theme.colorScheme.primary,
+                  onChanged: (val) => settings.setAutoCacheAudio(val),
+                ),
+                const SizedBox(height: 12),
+
+                // Офлайн аудио-кэш статистика
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Постоянный офлайн-кэш',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      cacheService != null
+                          ? '${cacheService.cachedCount} треков (${cacheService.formatBytes(cacheService.totalCacheSizeBytes)})'
+                          : '0 треков',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Расположение: ${cacheService?.cacheDir ?? "Audio Cache"}',
+                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: cacheService != null && (cacheService.cachedCount > 0 || cacheService.totalCacheSizeBytes > 0)
+                          ? () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Очистить аудио-кэш?'),
+                                  content: const Text(
+                                    'Все закэшированные файлы будут удалены с диска. Потребуется повторная загрузка из сети при воспроизведении.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(false),
+                                      child: const Text('Отмена'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.of(ctx).pop(true),
+                                      style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                                      child: const Text('Удалить'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await cacheService.clearCache();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Офлайн-кэш успешно очищен'),
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                      label: const Text('Очистить кэш'),
+                    ),
+                  ],
                 ),
               ],
             ),

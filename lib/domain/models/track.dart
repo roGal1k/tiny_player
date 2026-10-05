@@ -71,6 +71,40 @@ class Track {
     );
   }
 
+  Track copyWith({
+    String? id,
+    String? providerId,
+    String? title,
+    String? artist,
+    String? album,
+    String? artworkUrl,
+    Duration? duration,
+    DateTime? releaseDate,
+    String? genre,
+    bool? isExplicit,
+    bool? isStreamable,
+    bool? isDownloadable,
+    List<String>? qualityOptions,
+    String? sourceUrl,
+  }) {
+    return Track(
+      id: id ?? this.id,
+      providerId: providerId ?? this.providerId,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+      duration: duration ?? this.duration,
+      releaseDate: releaseDate ?? this.releaseDate,
+      genre: genre ?? this.genre,
+      isExplicit: isExplicit ?? this.isExplicit,
+      isStreamable: isStreamable ?? this.isStreamable,
+      isDownloadable: isDownloadable ?? this.isDownloadable,
+      qualityOptions: qualityOptions ?? this.qualityOptions,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

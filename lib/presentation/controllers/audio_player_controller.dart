@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../domain/models/track.dart';
@@ -6,6 +7,7 @@ import '../../data/providers/provider_registry.dart';
 import '../../data/providers/youtube_provider.dart';
 import '../../data/services/equalizer_service.dart';
 import '../../data/services/settings_service.dart';
+import '../../data/services/audio_cache_service.dart';
 
 enum PlaybackRepeatMode {
   off,
@@ -17,6 +19,7 @@ class AudioPlayerController extends ChangeNotifier {
   final ProviderRegistry registry;
   final EqualizerService? equalizerService;
   final SettingsService? settingsService;
+  final AudioCacheService? cacheService;
   final AudioPlayer _player;
 
   Track? _currentTrack;
@@ -42,6 +45,7 @@ class AudioPlayerController extends ChangeNotifier {
     required this.registry,
     this.equalizerService,
     this.settingsService,
+    this.cacheService,
     AudioPlayer? player,
   }) : _player = player ?? AudioPlayer() {
     _initStreams();
@@ -174,18 +178,37 @@ class AudioPlayerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final provider = registry.activeProviders.firstWhere(
-        (p) => p.providerId == track.providerId,
-        orElse: () => throw Exception('Provider ${track.providerId} not found'),
-      );
-
-      final streamUrl = await provider.getStreamUrl(track);
-
-      await _player.stop();
-      if (streamUrl.startsWith('http://') || streamUrl.startsWith('https://')) {
-        await _player.play(UrlSource(streamUrl));
+      // 1. Check if track is cached in AudioCacheService for instant offline playback
+      final cachedFile = cacheService?.getCachedFile(track);
+      if (cachedFile != null) {
+        debugPrint('[AudioPlayerController] Playing from audio cache: ${cachedFile.path}');
+        await _player.stop();
+        await _player.play(DeviceFileSource(cachedFile.path));
+      } else if (track.sourceUrl.isNotEmpty && File(track.sourceUrl).existsSync()) {
+        debugPrint('[AudioPlayerController] Playing from local file: ${track.sourceUrl}');
+        await _player.stop();
+        await _player.play(DeviceFileSource(track.sourceUrl));
       } else {
-        await _player.play(DeviceFileSource(streamUrl));
+        final provider = registry.activeProviders.firstWhere(
+          (p) => p.providerId == track.providerId,
+          orElse: () => throw Exception('Provider ${track.providerId} not found'),
+        );
+
+        final streamUrl = await provider.getStreamUrl(track);
+
+        await _player.stop();
+        if (streamUrl.startsWith('http://') || streamUrl.startsWith('https://')) {
+          await _player.play(UrlSource(streamUrl));
+          // Transparently cache streaming audio in background if enabled
+          if (settingsService?.autoCacheAudio != false && cacheService != null) {
+            cacheService!.cacheTrackInBackground(track, streamUrl);
+          }
+        } else {
+          await _player.play(DeviceFileSource(streamUrl));
+          if (settingsService?.autoCacheAudio != false && cacheService != null) {
+            cacheService!.registerExistingLocalFile(track, streamUrl);
+          }
+        }
       }
 
       if (equalizerService != null) {
@@ -222,6 +245,16 @@ class AudioPlayerController extends ChangeNotifier {
           final yt = registry.allProviders.whereType<YouTubeProvider>().firstOrNull;
           yt?.preloadTrack(nextTrack);
         } catch (_) {}
+      }
+
+      // Pre-cache next track in background for gapless offline transition
+      if (settingsService?.autoCacheAudio != false && cacheService != null) {
+        if (!cacheService!.isCached(nextTrack)) {
+          final provider = registry.allProviders.where((p) => p.providerId == nextTrack.providerId).firstOrNull;
+          if (provider != null) {
+            cacheService!.preloadTrack(nextTrack, provider);
+          }
+        }
       }
     }
   }

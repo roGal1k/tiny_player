@@ -83,6 +83,16 @@ CREATE TABLE library (
   FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
 )
 ''');
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS cached_tracks (
+  track_id TEXT PRIMARY KEY,
+  file_path TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  cached_at TEXT NOT NULL,
+  FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
+)
+''');
   }
 
   Future<void> insertTrack(Track track) async {
@@ -177,4 +187,77 @@ CREATE TABLE library (
     }
     return null;
   }
+
+  // -------------------------------------------------------------
+  // Audio Cache Methods
+  // -------------------------------------------------------------
+
+  Future<void> _ensureCachedTracksTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cached_tracks (
+        track_id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        cached_at TEXT NOT NULL,
+        FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future<void> addToCache(Track track, String filePath, int fileSize) async {
+    final db = await database;
+    await _ensureCachedTracksTable(db);
+    await insertTrack(track);
+    await db.insert(
+      'cached_tracks',
+      {
+        'track_id': track.id,
+        'file_path': filePath,
+        'file_size': fileSize,
+        'cached_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> removeFromCache(String trackId) async {
+    final db = await database;
+    await _ensureCachedTracksTable(db);
+    await db.delete(
+      'cached_tracks',
+      where: 'track_id = ?',
+      whereArgs: [trackId],
+    );
+  }
+
+  Future<void> clearCachedTracks() async {
+    final db = await database;
+    await _ensureCachedTracksTable(db);
+    await db.delete('cached_tracks');
+  }
+
+  Future<List<Track>> getCachedTracks() async {
+    final db = await database;
+    await _ensureCachedTracksTable(db);
+    final result = await db.rawQuery('''
+      SELECT t.*, c.file_path, c.file_size, c.cached_at FROM tracks t
+      INNER JOIN cached_tracks c ON t.id = c.track_id
+      ORDER BY c.cached_at DESC
+    ''');
+    return result.map((json) => Track.fromMap(json)).toList();
+  }
+
+  Future<bool> isTrackCached(String trackId) async {
+    final db = await database;
+    await _ensureCachedTracksTable(db);
+    final maps = await db.query(
+      'cached_tracks',
+      columns: ['track_id'],
+      where: 'track_id = ?',
+      whereArgs: [trackId],
+      limit: 1,
+    );
+    return maps.isNotEmpty;
+  }
 }
+

@@ -14,6 +14,7 @@ class SettingsService extends ChangeNotifier {
   String _hitmoMirrorUrl = 'https://ru.hitmoz.org';
   final Set<String> _disabledProviders = {};
   bool _autoPlayNext = true;
+  bool _autoCacheAudio = true;
   double _defaultPlaybackRate = 1.0;
   String _downloadPath = '';
 
@@ -31,6 +32,7 @@ class SettingsService extends ChangeNotifier {
   String get hitmoMirrorUrl => _hitmoMirrorUrl;
   Set<String> get disabledProviders => Set.unmodifiable(_disabledProviders);
   bool get autoPlayNext => _autoPlayNext;
+  bool get autoCacheAudio => _autoCacheAudio;
   double get defaultPlaybackRate => _defaultPlaybackRate;
   String get downloadPath => _downloadPath;
 
@@ -165,6 +167,11 @@ class SettingsService extends ChangeNotifier {
         _autoPlayNext = autoNextStr == 'true';
       }
 
+      final autoCacheStr = await _dbHelper.getSetting('settings_auto_cache_audio');
+      if (autoCacheStr != null) {
+        _autoCacheAudio = autoCacheStr == 'true';
+      }
+
       final rateStr = await _dbHelper.getSetting('settings_default_playback_rate');
       if (rateStr != null) {
         _defaultPlaybackRate = double.tryParse(rateStr)?.clamp(0.5, 2.0) ?? 1.0;
@@ -261,6 +268,12 @@ class SettingsService extends ChangeNotifier {
     _autoPlayNext = value;
     notifyListeners();
     await _dbHelper.setSetting('settings_auto_play_next', _autoPlayNext.toString());
+  }
+
+  Future<void> setAutoCacheAudio(bool value) async {
+    _autoCacheAudio = value;
+    notifyListeners();
+    await _dbHelper.setSetting('settings_auto_cache_audio', _autoCacheAudio.toString());
   }
 
   Future<void> setDefaultPlaybackRate(double rate) async {

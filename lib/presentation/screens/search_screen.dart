@@ -5,6 +5,15 @@ import '../../domain/models/track.dart';
 import '../controllers/audio_player_controller.dart';
 import '../../data/services/download_manager.dart';
 import '../../data/services/video_launcher_service.dart';
+import '../../data/services/audio_cache_service.dart';
+
+enum SearchSortMode {
+  defaultMix,
+  byPlatform,
+  byArtist,
+  byTitle,
+  byDuration,
+}
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -23,12 +32,56 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   String? _error;
   String _activeCategory = '';
   String _selectedProvider = 'all';
+  SearchSortMode _sortMode = SearchSortMode.defaultMix;
 
   List<Track> get _filteredResults {
     if (_selectedProvider == 'all') return _results;
     return _results
         .where((t) => t.providerId.toLowerCase() == _selectedProvider.toLowerCase())
         .toList();
+  }
+
+  List<Track> get _sortedAndFilteredResults {
+    final list = _filteredResults;
+    if (_sortMode == SearchSortMode.defaultMix) return list;
+
+    final copy = List<Track>.from(list);
+    switch (_sortMode) {
+      case SearchSortMode.byPlatform:
+        copy.sort((a, b) {
+          final cmp = a.providerId.compareTo(b.providerId);
+          if (cmp != 0) return cmp;
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        });
+        break;
+      case SearchSortMode.byArtist:
+        copy.sort((a, b) => a.artist.toLowerCase().compareTo(b.artist.toLowerCase()));
+        break;
+      case SearchSortMode.byTitle:
+        copy.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+      case SearchSortMode.byDuration:
+        copy.sort((a, b) => b.duration.compareTo(a.duration));
+        break;
+      case SearchSortMode.defaultMix:
+        break;
+    }
+    return copy;
+  }
+
+  String _getSortModeName(SearchSortMode mode) {
+    switch (mode) {
+      case SearchSortMode.defaultMix:
+        return 'Микс (по умолчанию)';
+      case SearchSortMode.byPlatform:
+        return 'По платформам';
+      case SearchSortMode.byArtist:
+        return 'По исполнителю (А-Я)';
+      case SearchSortMode.byTitle:
+        return 'По названию (А-Я)';
+      case SearchSortMode.byDuration:
+        return 'По длительности';
+    }
   }
 
   final List<(String, IconData)> _categories = const [
@@ -179,11 +232,35 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     }
   }
 
+  IconData _getProviderIcon(String id) {
+    switch (id.toLowerCase()) {
+      case 'hitmo':
+        return Icons.music_video;
+      case 'youtube':
+        return Icons.smart_display;
+      case 'vk':
+        return Icons.record_voice_over;
+      case 'soundcloud':
+        return Icons.cloud_queue;
+      case 'jamendo':
+        return Icons.album;
+      case 'internet_archive':
+        return Icons.archive;
+      case 'freesound':
+        return Icons.graphic_eq;
+      case 'local':
+        return Icons.folder;
+      default:
+        return Icons.library_music;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final audioController = context.watch<AudioPlayerController>();
     final downloadManager = context.watch<DownloadManager>();
+    final cacheService = context.watch<AudioCacheService?>();
 
     return Scaffold(
       appBar: AppBar(
@@ -213,11 +290,11 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           ),
         ],
       ),
-      body: _buildBody(audioController, downloadManager),
+      body: _buildBody(audioController, downloadManager, cacheService),
     );
   }
 
-  Widget _buildBody(AudioPlayerController audioController, DownloadManager downloadManager) {
+  Widget _buildBody(AudioPlayerController audioController, DownloadManager downloadManager, AudioCacheService? cacheService) {
     return Column(
       children: [
         _buildCategoryChips(),
@@ -227,7 +304,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           _buildBatchActionBar(downloadManager),
         ],
         Expanded(
-          child: _buildResultsList(audioController, downloadManager),
+          child: _buildResultsList(audioController, downloadManager, cacheService),
         ),
       ],
     );
@@ -358,7 +435,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   }
 
   Widget _buildBatchActionBar(DownloadManager downloadManager) {
-    final tracksToProcess = _filteredResults;
+    final tracksToProcess = _sortedAndFilteredResults;
     final downloadableTracks = tracksToProcess.where((t) => t.isDownloadable).toList();
     final downloadableCount = downloadableTracks.length;
 
@@ -396,12 +473,79 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 Text(
                   'Показано ${tracksToProcess.length} из ${_results.length} треков' +
                       (breakdown.isNotEmpty ? ' ($breakdown)' : '') +
+                      (_sortMode != SearchSortMode.defaultMix ? ' • ${_getSortModeName(_sortMode)}' : '') +
                       (downloadableCount > 0 ? ' • $downloadableCount доступны' : ''),
                   style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6)),
                 ),
               ],
             ),
           ),
+          PopupMenuButton<SearchSortMode>(
+            tooltip: 'Сортировка (${_getSortModeName(_sortMode)})',
+            icon: Icon(
+              _sortMode == SearchSortMode.defaultMix ? Icons.swap_vert : Icons.sort,
+              size: 20,
+              color: _sortMode == SearchSortMode.defaultMix ? Colors.white70 : Colors.pinkAccent,
+            ),
+            onSelected: (mode) {
+              setState(() {
+                _sortMode = mode;
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: SearchSortMode.defaultMix,
+                child: Row(
+                  children: [
+                    Icon(Icons.shuffle, size: 18),
+                    SizedBox(width: 8),
+                    Text('По умолчанию (микс)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: SearchSortMode.byPlatform,
+                child: Row(
+                  children: [
+                    Icon(Icons.apps, size: 18, color: Colors.pinkAccent),
+                    SizedBox(width: 8),
+                    Text('По платформам (источникам)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: SearchSortMode.byArtist,
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 18),
+                    SizedBox(width: 8),
+                    Text('По исполнителю (А-Я)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: SearchSortMode.byTitle,
+                child: Row(
+                  children: [
+                    Icon(Icons.title, size: 18),
+                    SizedBox(width: 8),
+                    Text('По названию (А-Я)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: SearchSortMode.byDuration,
+                child: Row(
+                  children: [
+                    Icon(Icons.timer_outlined, size: 18),
+                    SizedBox(width: 8),
+                    Text('По длительности'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
           if (downloadableCount > 0) ...[
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -467,7 +611,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     );
   }
 
-  Widget _buildResultsList(AudioPlayerController audioController, DownloadManager downloadManager) {
+  Widget _buildResultsList(AudioPlayerController audioController, DownloadManager downloadManager, AudioCacheService? cacheService) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -561,7 +705,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       );
     }
 
-    final tracksToDisplay = _filteredResults;
+    final tracksToDisplay = _sortedAndFilteredResults;
 
     if (tracksToDisplay.isEmpty) {
       return Center(
@@ -581,6 +725,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       );
     }
 
+    final isPlatformGroup = _sortMode == SearchSortMode.byPlatform && _selectedProvider == 'all';
+
     return ListView.builder(
       key: const PageStorageKey<String>('search_screen_results_list'),
       itemCount: tracksToDisplay.length,
@@ -589,8 +735,12 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         final isCurrent = audioController.currentTrack?.id == track.id &&
             audioController.currentTrack?.providerId == track.providerId;
         final providerColor = _getProviderColor(track.providerId);
+        final isTrackCached = cacheService?.isCached(track) ?? false;
 
-        return ListTile(
+        final showHeader = isPlatformGroup &&
+            (index == 0 || tracksToDisplay[index].providerId != tracksToDisplay[index - 1].providerId);
+
+        final tile = ListTile(
           selected: isCurrent,
           selectedTileColor: Colors.white.withOpacity(0.06),
           leading: Stack(
@@ -656,6 +806,31 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                   ),
                 ),
               ),
+              if (isTrackCached) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.greenAccent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.offline_pin, size: 10, color: Colors.greenAccent),
+                      SizedBox(width: 2),
+                      Text(
+                        'ОФЛАЙН',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.greenAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -742,6 +917,62 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
             }
           },
         );
+
+        if (showHeader) {
+          final pid = track.providerId;
+          final providerName = _getProviderName(pid);
+          final providerColor = _getProviderColor(pid);
+          final icon = _getProviderIcon(pid);
+          final count = tracksToDisplay.where((t) => t.providerId == pid).length;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: index == 0 ? 8 : 16,
+                  bottom: 4,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: providerColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: providerColor.withOpacity(0.25)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 16, color: providerColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      providerName.toUpperCase(),
+                      style: TextStyle(
+                        color: providerColor,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '$count треков',
+                      style: TextStyle(
+                        color: providerColor.withOpacity(0.8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              tile,
+            ],
+          );
+        }
+
+        return tile;
       },
     );
   }
