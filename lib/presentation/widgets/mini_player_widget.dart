@@ -34,6 +34,10 @@ class MiniPlayerWidget extends StatelessWidget {
         return Colors.pinkAccent;
       case 'youtube':
         return const Color(0xFFFF0000);
+      case 'audius':
+        return const Color(0xFFCC0FE0);
+      case 'deezer':
+        return const Color(0xFFFEAA2D);
       default:
         return Colors.deepPurpleAccent;
     }

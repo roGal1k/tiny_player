@@ -43,6 +43,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         return Colors.pinkAccent;
       case 'youtube':
         return const Color(0xFFFF0000);
+      case 'audius':
+        return const Color(0xFFCC0FE0);
+      case 'deezer':
+        return const Color(0xFFFEAA2D);
       case 'soundcloud':
         return Colors.orangeAccent;
       case 'jamendo':

@@ -18,6 +18,8 @@ import 'data/providers/vk_provider.dart';
 import 'data/providers/freesound_provider.dart';
 import 'data/providers/hitmo_provider.dart';
 import 'data/providers/youtube_provider.dart';
+import 'data/providers/audius_provider.dart';
+import 'data/providers/deezer_provider.dart';
 import 'data/services/local_library_service.dart';
 import 'data/services/download_manager.dart';
 import 'data/services/genius_lyrics_service.dart';
@@ -39,6 +41,8 @@ void main() async {
       : (dotenv.env['HITMO_MIRROR_URL'] ?? 'https://ru.hitmoz.org');
   registry.registerProvider(HitmoProvider(mirrorUrl: initialHitmoUrl));
   registry.registerProvider(YouTubeProvider());
+  registry.registerProvider(AudiusProvider());
+  registry.registerProvider(DeezerProvider(arl: dotenv.env['DEEZER_ARL']));
   registry.registerProvider(SoundCloudProvider(clientId: dotenv.env['SC_CLIENT_ID']));
   registry.registerProvider(JamendoProvider());
   registry.registerProvider(InternetArchiveProvider());

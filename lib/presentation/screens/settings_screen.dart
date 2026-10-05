@@ -102,6 +102,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Colors.blueAccent;
       case 'freesound':
         return Colors.tealAccent;
+      case 'audius':
+        return const Color(0xFFCC0FE0);
+      case 'deezer':
+        return const Color(0xFFFEAA2D);
       case 'local':
         return Colors.purpleAccent;
       default:
@@ -115,6 +119,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Icons.music_video;
       case 'youtube':
         return Icons.smart_display;
+      case 'audius':
+        return Icons.waves;
+      case 'deezer':
+        return Icons.equalizer;
       case 'vk':
         return Icons.record_voice_over;
       case 'soundcloud':

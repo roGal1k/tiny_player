@@ -91,6 +91,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     ('Новинки', Icons.new_releases),
     ('Hitmo Чарты', Icons.music_video),
     ('YouTube Music', Icons.smart_display),
+    ('Audius Trends', Icons.waves),
+    ('Deezer Hits', Icons.equalizer),
     ('SoundCloud', Icons.graphic_eq),
     ('Рок', Icons.music_note),
     ('Electronic', Icons.headphones),
@@ -120,6 +122,20 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           tracks = await yt.search('Popular Music Hits');
         } else {
           tracks = await registry.searchAcrossProviders('Popular Music Hits');
+        }
+      } else if (category == 'Audius Trends') {
+        final audius = registry.allProviders.where((p) => p.providerId == 'audius').firstOrNull;
+        if (audius != null && registry.isProviderEnabled('audius')) {
+          tracks = await audius.search('trending');
+        } else {
+          tracks = await registry.searchAcrossProviders('trending electronic');
+        }
+      } else if (category == 'Deezer Hits') {
+        final deezer = registry.allProviders.where((p) => p.providerId == 'deezer').firstOrNull;
+        if (deezer != null && registry.isProviderEnabled('deezer')) {
+          tracks = await deezer.search('top');
+        } else {
+          tracks = await registry.searchAcrossProviders('top hits');
         }
       } else if (category == 'SoundCloud') {
         tracks = await registry.searchAcrossProviders('SoundCloud Hits');
@@ -274,6 +290,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         return Colors.pinkAccent;
       case 'youtube':
         return const Color(0xFFFF0000);
+      case 'audius':
+        return const Color(0xFFCC0FE0);
+      case 'deezer':
+        return const Color(0xFFFEAA2D);
       default:
         return Colors.deepPurpleAccent;
     }
@@ -285,6 +305,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         return 'Hitmo';
       case 'youtube':
         return 'YouTube';
+      case 'audius':
+        return 'Audius';
+      case 'deezer':
+        return 'Deezer';
       case 'soundcloud':
         return 'SoundCloud';
       case 'jamendo':
@@ -308,6 +332,10 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         return Icons.music_video;
       case 'youtube':
         return Icons.smart_display;
+      case 'audius':
+        return Icons.waves;
+      case 'deezer':
+        return Icons.equalizer;
       case 'vk':
         return Icons.record_voice_over;
       case 'soundcloud':
