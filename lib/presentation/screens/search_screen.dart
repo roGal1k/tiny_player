@@ -34,6 +34,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   final List<(String, IconData)> _categories = const [
     ('Топ Сегодня', Icons.local_fire_department),
     ('Новинки', Icons.new_releases),
+    ('Hitmo Чарты', Icons.music_video),
+    ('YouTube Music', Icons.smart_display),
     ('SoundCloud', Icons.graphic_eq),
     ('Рок', Icons.music_note),
     ('Electronic', Icons.headphones),
@@ -52,10 +54,17 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     try {
       final registry = context.read<ProviderRegistry>();
       List<Track> tracks = [];
-      if (category == 'Топ Сегодня') {
+      if (category == 'Топ Сегодня' || category == 'Hitmo Чарты') {
         tracks = await registry.getPopularTracks();
       } else if (category == 'Новинки') {
         tracks = await registry.getNewReleases();
+      } else if (category == 'YouTube Music') {
+        final yt = registry.allProviders.where((p) => p.providerId == 'youtube').firstOrNull;
+        if (yt != null && registry.isProviderEnabled('youtube')) {
+          tracks = await yt.search('Popular Music Hits');
+        } else {
+          tracks = await registry.searchAcrossProviders('Popular Music Hits');
+        }
       } else if (category == 'SoundCloud') {
         tracks = await registry.searchAcrossProviders('SoundCloud Hits');
       } else {
@@ -299,7 +308,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       counts[pid] = (counts[pid] ?? 0) + 1;
     }
 
-    if (counts.length <= 2) {
+    if (counts.length <= 1) {
       return const SizedBox.shrink();
     }
 
@@ -353,6 +362,14 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     final downloadableTracks = tracksToProcess.where((t) => t.isDownloadable).toList();
     final downloadableCount = downloadableTracks.length;
 
+    // Per-provider counts summary
+    final Map<String, int> providerCounts = {};
+    for (final track in _results) {
+      final name = _getProviderName(track.providerId);
+      providerCounts[name] = (providerCounts[name] ?? 0) + 1;
+    }
+    final breakdown = providerCounts.entries.map((e) => '${e.key}: ${e.value}').join(' • ');
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -378,6 +395,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 ),
                 Text(
                   'Показано ${tracksToProcess.length} из ${_results.length} треков' +
+                      (breakdown.isNotEmpty ? ' ($breakdown)' : '') +
                       (downloadableCount > 0 ? ' • $downloadableCount доступны' : ''),
                   style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6)),
                 ),
@@ -511,6 +529,11 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 alignment: WrapAlignment.center,
                 children: [
                   ActionChip(
+                    avatar: const Icon(Icons.music_video, size: 18, color: Colors.pinkAccent),
+                    label: const Text('Hitmo Чарты'),
+                    onPressed: () => _loadCategory('Hitmo Чарты'),
+                  ),
+                  ActionChip(
                     avatar: const Icon(Icons.whatshot, size: 18, color: Colors.pinkAccent),
                     label: const Text('Топ Сегодня'),
                     onPressed: () => _loadCategory('Топ Сегодня'),
@@ -519,6 +542,11 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                     avatar: const Icon(Icons.new_releases, size: 18, color: Colors.amberAccent),
                     label: const Text('Новинки'),
                     onPressed: () => _loadCategory('Новинки'),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.smart_display, size: 18, color: Colors.redAccent),
+                    label: const Text('YouTube Music'),
+                    onPressed: () => _loadCategory('YouTube Music'),
                   ),
                   ActionChip(
                     avatar: const Icon(Icons.graphic_eq, size: 18, color: Colors.orangeAccent),

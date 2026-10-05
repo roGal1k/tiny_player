@@ -37,6 +37,7 @@ class HitmoProvider implements MusicProvider {
   final List<String> _fallbackMirrors = const [
     'https://ru.hitmoz.org',
     'https://rur.hitmotop.com',
+    'https://rus.hitmotop.com',
   ];
 
   @override
@@ -88,16 +89,28 @@ class HitmoProvider implements MusicProvider {
       final response = await _client.get(
         uri,
         headers: _headers,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 7));
 
       if (response.statusCode == 200) {
-        return parseHtmlTracks(response.body, baseDomain: '${uri.scheme}://${uri.host}');
+        final parsed = parseHtmlTracks(response.body, baseDomain: '${uri.scheme}://${uri.host}');
+        _logSearch('Hitmo fetched ${parsed.length} tracks from $uri (status 200)');
+        return parsed;
+      } else {
+        _logSearch('Hitmo HTTP ${response.statusCode} from $uri');
       }
     } catch (e) {
-      // Graceful fallback on network timeout or blocked mirrors
+      _logSearch('Hitmo request failed for $uri: $e');
     }
 
     return [];
+  }
+
+  void _logSearch(String message) {
+    try {
+      final now = DateTime.now().toIso8601String();
+      // ignore: avoid_print
+      print('[$now] $message');
+    } catch (_) {}
   }
 
   List<Track> parseHtmlTracks(String html, {String? baseDomain}) {
@@ -110,12 +123,27 @@ class HitmoProvider implements MusicProvider {
       final titleEl = el.querySelector('div.track__title');
       final artistEl = el.querySelector('div.track__desc');
       final durationEl = el.querySelector('div.track__fulltime');
-      final downloadBtn = el.querySelector('a.track__download-btn');
+      var downloadBtn = el.querySelector('a.track__download-btn');
+      if (downloadBtn == null && el.parent != null) {
+        downloadBtn = el.parent!.querySelector('a.track__download-btn');
+      }
 
       final title = titleEl?.text.trim() ?? 'Unknown Title';
       final artist = artistEl?.text.trim() ?? 'Unknown Artist';
       final durationText = durationEl?.text.trim() ?? '0:00';
-      final streamUrl = downloadBtn?.attributes['href']?.trim() ?? '';
+      var streamUrl = downloadBtn?.attributes['href']?.trim() ?? '';
+
+      // Fallback: check data-musmeta on parent if streamUrl is empty
+      if (streamUrl.isEmpty && el.parent != null) {
+        final musMetaAttr = el.parent!.attributes['data-musmeta'];
+        if (musMetaAttr != null && musMetaAttr.isNotEmpty) {
+          try {
+            final meta = json.decode(musMetaAttr);
+            final metaUrl = meta['url'] ?? meta['file'] ?? meta['mp3'];
+            if (metaUrl != null) streamUrl = metaUrl.toString();
+          } catch (_) {}
+        }
+      }
 
       if (streamUrl.isEmpty) continue;
 

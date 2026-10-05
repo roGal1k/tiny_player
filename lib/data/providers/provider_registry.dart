@@ -56,17 +56,33 @@ class ProviderRegistry {
     // Wait for all providers to finish searching
     final results = await Future.wait(searchFutures);
 
-    // Flatten the results
-    final allTracks = results.expand((tracks) => tracks).toList();
+    // Interleave results round-robin so top tracks from all providers appear first
+    final allTracks = _interleaveTracks(results);
 
     return allTracks;
+  }
+
+  static List<Track> _interleaveTracks(List<List<Track>> providerResults) {
+    final interleaved = <Track>[];
+    int maxLen = 0;
+    for (final list in providerResults) {
+      if (list.length > maxLen) maxLen = list.length;
+    }
+    for (int i = 0; i < maxLen; i++) {
+      for (final list in providerResults) {
+        if (i < list.length) {
+          interleaved.add(list[i]);
+        }
+      }
+    }
+    return interleaved;
   }
 
   /// Получает популярные треки/чарты сегодняшнего дня
   Future<List<Track>> getPopularTracks() async {
     final results = <Track>[];
     for (final provider in _providers) {
-      if (provider is HitmoProvider) {
+      if (provider is HitmoProvider && isProviderEnabled(provider.providerId)) {
         try {
           final tracks = await provider.getPopularTracks();
           results.addAll(tracks);
@@ -86,7 +102,7 @@ class ProviderRegistry {
   Future<List<Track>> getNewReleases() async {
     final results = <Track>[];
     for (final provider in _providers) {
-      if (provider is HitmoProvider) {
+      if (provider is HitmoProvider && isProviderEnabled(provider.providerId)) {
         try {
           final tracks = await provider.getNewTracks();
           results.addAll(tracks);

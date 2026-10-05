@@ -112,8 +112,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // Verify batch download buttons appear (Все, Топ 5, Топ 10)
-    expect(find.textContaining('Все ('), findsOneWidget);
+    // Verify batch download buttons and provider chips appear (Все, Топ 5, Топ 10)
+    expect(find.textContaining('Все ('), findsWidgets);
     expect(find.text('Топ 5'), findsOneWidget);
     expect(find.text('Топ 10'), findsOneWidget);
 
