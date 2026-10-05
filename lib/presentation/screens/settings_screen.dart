@@ -7,7 +7,9 @@ import '../../data/services/audio_cache_service.dart';
 import '../../data/providers/provider_registry.dart';
 import '../../data/providers/hitmo_provider.dart';
 import '../controllers/audio_player_controller.dart';
+import '../../data/services/sync_service.dart';
 import 'equalizer_screen.dart';
+import 'sync_account_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -192,6 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final registry = Provider.of<ProviderRegistry?>(context);
     final libraryService = Provider.of<LocalLibraryService?>(context);
     final cacheService = Provider.of<AudioCacheService?>(context);
+    final syncService = Provider.of<SyncService?>(context);
 
     if (settings == null) {
       return const Scaffold(
@@ -208,6 +211,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         children: [
+          // -----------------------------------------------------------
+          // СЕКЦИЯ: Облачный аккаунт и Синхронизация
+          // -----------------------------------------------------------
+          _buildSectionHeader(context, 'Облачный аккаунт и Синхронизация', Icons.cloud_sync_outlined),
+          _buildCard(
+            context: context,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SyncAccountScreen()),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: (syncService?.isLoggedIn == true ? Colors.greenAccent : theme.colorScheme.primary).withOpacity(0.15),
+                      child: Icon(
+                        syncService?.isLoggedIn == true ? Icons.cloud_done : Icons.cloud_queue,
+                        color: syncService?.isLoggedIn == true ? Colors.greenAccent : theme.colorScheme.primary,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            syncService?.isLoggedIn == true
+                                ? 'Аккаунт: ${syncService?.username}'
+                                : 'Войти в аккаунт',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            syncService?.isLoggedIn == true
+                                ? '${syncService?.serverUrl} • ${syncService?.statusMessage ?? "Синхронизировано"}'
+                                : 'Синхронизация библиотеки между Linux, Android и Web',
+                            style: const TextStyle(fontSize: 12, color: Colors.white60),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.white54),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
           // -----------------------------------------------------------
           // СЕКЦИЯ 1: Аудио и Воспроизведение
           // -----------------------------------------------------------

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../domain/models/track.dart';
 import '../providers/youtube_provider.dart';
@@ -14,6 +15,7 @@ class VideoLauncherService {
   static bool? _ffplayAvailable;
 
   static Future<bool> isVlcAvailable() async {
+    if (kIsWeb) return false;
     if (_vlcAvailable != null) return _vlcAvailable!;
     try {
       final res = await Process.run('which', ['vlc']);
@@ -25,6 +27,7 @@ class VideoLauncherService {
   }
 
   static Future<bool> isFfplayAvailable() async {
+    if (kIsWeb) return false;
     if (_ffplayAvailable != null) return _ffplayAvailable!;
     try {
       final res = await Process.run('which', ['ffplay']);
@@ -49,6 +52,12 @@ class VideoLauncherService {
     AudioPlayerController? audioController,
     BuildContext? context,
   }) async {
+    if (kIsWeb) {
+      if (context != null && context.mounted) {
+        _showNotice(context, 'Воспроизведение внешнего видео не поддерживается в веб-версии');
+      }
+      return;
+    }
     // 1. Pause current audio to avoid audio overlap
     if (audioController != null && audioController.isPlaying) {
       await audioController.pause();

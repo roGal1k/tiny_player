@@ -24,6 +24,7 @@ class AudioCacheService extends ChangeNotifier {
         _cacheDir = customCacheDir ?? defaultCacheDir;
 
   static String get defaultCacheDir {
+    if (kIsWeb) return '/core_player_cache';
     final home = Platform.environment['HOME'];
     if (home != null && home.isNotEmpty) {
       return p.join(home, '.cache', 'core_player', 'audio_cache');
@@ -35,6 +36,7 @@ class AudioCacheService extends ChangeNotifier {
   int get cachedCount => _cachedTrackIds.length;
 
   Future<void> init() async {
+    if (kIsWeb) return;
     try {
       final dir = Directory(_cacheDir);
       if (!await dir.exists()) {
@@ -100,6 +102,7 @@ class AudioCacheService extends ChangeNotifier {
   }
 
   File? getCachedFile(Track track) {
+    if (kIsWeb) return null;
     // Check in-memory path
     final memoryPath = _cachedFilePaths[track.id];
     if (memoryPath != null) {

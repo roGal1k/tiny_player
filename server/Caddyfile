@@ -1,0 +1,42 @@
+{
+    admin off
+}
+
+:80 {
+    # Sync API & Stream Proxy
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Developer portfolio / Business card
+    handle_path /about* {
+        root * /var/www/galik-tech.su
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Main CorePlayer Web Application
+    handle {
+        root * /var/www/core_player_web
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+:8443 {
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle_path /about* {
+        root * /var/www/galik-tech.su
+        try_files {path} /index.html
+        file_server
+    }
+
+    handle {
+        root * /var/www/core_player_web
+        try_files {path} /index.html
+        file_server
+    }
+}

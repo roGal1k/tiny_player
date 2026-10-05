@@ -94,6 +94,7 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<String> _getDownloadDirectory() async {
+    if (kIsWeb) return '/downloads';
     if (customDownloadDir != null) {
       final dir = Directory(customDownloadDir!);
       if (!await dir.exists()) {

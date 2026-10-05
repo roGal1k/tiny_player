@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../domain/models/track.dart';
@@ -26,24 +28,30 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filePath) async {
-    // Initialize FFI for Desktop
-    if (Platform.isWindows || Platform.isLinux) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
-    }
-
     String dbPath;
-    if (filePath == inMemoryDatabasePath) {
-      dbPath = inMemoryDatabasePath;
+
+    if (kIsWeb) {
+      databaseFactory = databaseFactoryFfiWeb;
+      dbPath = filePath;
     } else {
-      try {
-        final appDocDir = await getApplicationDocumentsDirectory();
-        dbPath = join(appDocDir.path, 'CorePlayer', filePath);
-        await Directory(dirname(dbPath)).create(recursive: true);
-      } catch (_) {
-        final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-        dbPath = join(home, '.core_player', filePath);
-        await Directory(dirname(dbPath)).create(recursive: true);
+      // Initialize FFI for Desktop
+      if (Platform.isWindows || Platform.isLinux) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+      }
+
+      if (filePath == inMemoryDatabasePath) {
+        dbPath = inMemoryDatabasePath;
+      } else {
+        try {
+          final appDocDir = await getApplicationDocumentsDirectory();
+          dbPath = join(appDocDir.path, 'CorePlayer', filePath);
+          await Directory(dirname(dbPath)).create(recursive: true);
+        } catch (_) {
+          final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+          dbPath = join(home, '.core_player', filePath);
+          await Directory(dirname(dbPath)).create(recursive: true);
+        }
       }
     }
 

@@ -20,12 +20,14 @@ import 'data/providers/hitmo_provider.dart';
 import 'data/providers/youtube_provider.dart';
 import 'data/providers/audius_provider.dart';
 import 'data/providers/deezer_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'data/services/local_library_service.dart';
 import 'data/services/download_manager.dart';
 import 'data/services/genius_lyrics_service.dart';
 import 'data/services/equalizer_service.dart';
 import 'data/services/settings_service.dart';
 import 'data/services/audio_cache_service.dart';
+import 'data/services/sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +69,9 @@ void main() async {
   final equalizerService = EqualizerService();
   await equalizerService.init();
 
+  final syncService = SyncService();
+  await syncService.init();
+
   runApp(
     MultiProvider(
       providers: [
@@ -77,6 +82,7 @@ void main() async {
         ChangeNotifierProvider<LocalLibraryService>.value(value: localLibraryService),
         ChangeNotifierProvider<DownloadManager>.value(value: downloadManager),
         ChangeNotifierProvider<EqualizerService>.value(value: equalizerService),
+        ChangeNotifierProvider<SyncService>.value(value: syncService),
         ChangeNotifierProvider<AudioPlayerController>(
           create: (_) => AudioPlayerController(
             registry: registry,
@@ -127,8 +133,10 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   Widget build(BuildContext context) {
-    // Basic responsive layout detection
-    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    // Responsive layout detection (web-safe)
+    final isDesktop = kIsWeb
+        ? MediaQuery.of(context).size.width > 720
+        : (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     
     if (isDesktop) {
       return Scaffold(

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
@@ -9,7 +10,7 @@ class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   void _showScanDialog(BuildContext context) {
-    final defaultPath = Platform.environment['HOME'] != null
+    final defaultPath = (!kIsWeb && Platform.environment['HOME'] != null)
         ? p.join(Platform.environment['HOME']!, 'Music')
         : '/home/gera/Music';
 

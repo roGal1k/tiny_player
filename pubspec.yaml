@@ -45,6 +45,7 @@ dependencies:
   audioplayers: ^6.8.1
   html: ^0.15.7
   youtube_explode_dart: ^3.1.0
+  sqflite_common_ffi_web: ^0.4.5+2
 
 dev_dependencies:
   flutter_test:

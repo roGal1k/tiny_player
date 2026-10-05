@@ -32,6 +32,7 @@ class LocalLibraryService extends ChangeNotifier {
   }
 
   Future<void> _autoSyncDownloadDirectory() async {
+    if (kIsWeb) return;
     try {
       final home = Platform.environment['HOME'];
       if (home == null || home.isEmpty) return;

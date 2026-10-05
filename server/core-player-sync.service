@@ -1,0 +1,15 @@
+[Unit]
+Description=CorePlayer Sync and Proxy Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/core_player_server
+ExecStart=/opt/core_player_server/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+Environment=DB_PATH=/var/lib/core_player/core_player.db
+
+[Install]
+WantedBy=multi-user.target
