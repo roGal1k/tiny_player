@@ -119,6 +119,8 @@ void main() {
 
     // Verify tracks are rendered
     expect(find.textContaining('Track 0'), findsOneWidget);
+    // Verify track duration is rendered
+    expect(find.text('03:00'), findsWidgets);
 
     audioController.dispose();
   });

@@ -21,11 +21,41 @@ class LocalLibraryService extends ChangeNotifier {
 
   Future<void> loadLibrary() async {
     try {
+      await _autoSyncDownloadDirectory();
       _tracks = await _dbHelper.getLibraryTracks();
       notifyListeners();
     } catch (e) {
       if (kDebugMode) {
         print('Failed to load local library: $e');
+      }
+    }
+  }
+
+  Future<void> _autoSyncDownloadDirectory() async {
+    try {
+      final home = Platform.environment['HOME'];
+      if (home == null || home.isEmpty) return;
+
+      final downloadDir = Directory(p.join(home, 'Music', 'CorePlayer'));
+      if (!await downloadDir.exists()) return;
+
+      const audioExtensions = {'.mp3', '.flac', '.ogg', '.wav', '.m4a', '.aac'};
+      final existingTracks = await _dbHelper.getLibraryTracks();
+      final existingPaths = existingTracks.map((t) => t.sourceUrl).toSet();
+
+      final entities = downloadDir.listSync();
+      for (final entity in entities) {
+        if (entity is File) {
+          final ext = p.extension(entity.path).toLowerCase();
+          if (audioExtensions.contains(ext) && !existingPaths.contains(entity.path)) {
+            final track = _createTrackFromFile(entity);
+            await _dbHelper.addToLibrary(track);
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[LocalLibraryService] _autoSyncDownloadDirectory error: $e');
       }
     }
   }
@@ -70,6 +100,13 @@ class LocalLibraryService extends ChangeNotifier {
   }
 
   Future<void> removeTrack(String trackId) async {
+    final track = _tracks.where((t) => t.id == trackId).firstOrNull;
+    if (track != null && track.sourceUrl.isNotEmpty) {
+      try {
+        final f = File(track.sourceUrl);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
     await _dbHelper.removeFromLibrary(trackId);
     await loadLibrary();
   }

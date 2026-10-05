@@ -6,6 +6,7 @@ import '../controllers/audio_player_controller.dart';
 import '../../data/services/download_manager.dart';
 import '../../data/services/video_launcher_service.dart';
 import '../../data/services/audio_cache_service.dart';
+import '../../data/local/database_helper.dart';
 
 enum SearchSortMode {
   defaultMix,
@@ -29,6 +30,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   bool get wantKeepAlive => true;
   List<Track> _results = [];
   bool _isLoading = false;
+  bool _isOfflineMode = false;
   String? _error;
   String _activeCategory = '';
   String _selectedProvider = 'all';
@@ -102,6 +104,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       _activeCategory = category;
       _isLoading = true;
       _error = null;
+      _isOfflineMode = false;
     });
 
     try {
@@ -124,6 +127,19 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         tracks = await registry.getTracksByGenre(category);
       }
 
+      if (tracks.isEmpty) {
+        // Если сеть не вернула треки (например, нет интернета), проверяем локальные треки
+        final localTracks = await DatabaseHelper.instance.searchLocalTracks('');
+        if (localTracks.isNotEmpty && mounted) {
+          setState(() {
+            _selectedProvider = 'all';
+            _results = localTracks;
+            _isOfflineMode = true;
+          });
+          return;
+        }
+      }
+
       if (mounted) {
         setState(() {
           _selectedProvider = 'all';
@@ -131,6 +147,20 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         });
       }
     } catch (e) {
+      // Офлайн фоллбэк при сетевых ошибках
+      try {
+        final localTracks = await DatabaseHelper.instance.searchLocalTracks('');
+        if (localTracks.isNotEmpty && mounted) {
+          setState(() {
+            _selectedProvider = 'all';
+            _results = localTracks;
+            _isOfflineMode = true;
+            _error = null;
+          });
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -156,11 +186,26 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       _activeCategory = '';
       _isLoading = true;
       _error = null;
+      _isOfflineMode = false;
     });
 
     try {
       final registry = context.read<ProviderRegistry>();
       final results = await registry.searchAcrossProviders(query);
+
+      if (results.isEmpty) {
+        // Если поиск по сети пуст (например, нет интернета), ищем по локальной базе и кэшу
+        final localResults = await DatabaseHelper.instance.searchLocalTracks(query);
+        if (localResults.isNotEmpty && mounted) {
+          setState(() {
+            _selectedProvider = 'all';
+            _results = localResults;
+            _isOfflineMode = true;
+          });
+          return;
+        }
+      }
+
       if (mounted) {
         setState(() {
           _selectedProvider = 'all';
@@ -168,6 +213,20 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
         });
       }
     } catch (e) {
+      // Офлайн поиск при сетевых ошибках
+      try {
+        final localResults = await DatabaseHelper.instance.searchLocalTracks(query);
+        if (localResults.isNotEmpty && mounted) {
+          setState(() {
+            _selectedProvider = 'all';
+            _results = localResults;
+            _isOfflineMode = true;
+            _error = null;
+          });
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -186,6 +245,17 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  String _formatDuration(Duration duration) {
+    if (duration <= Duration.zero) return '';
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    if (duration.inHours > 0) {
+      return '${duration.inHours}:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
   }
 
   Color _getProviderColor(String providerId) {
@@ -297,6 +367,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   Widget _buildBody(AudioPlayerController audioController, DownloadManager downloadManager, AudioCacheService? cacheService) {
     return Column(
       children: [
+        if (_isOfflineMode) _buildOfflineBanner(),
         _buildCategoryChips(),
         _buildActiveDownloadsBanner(downloadManager),
         if (_results.isNotEmpty) ...[
@@ -307,6 +378,43 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           child: _buildResultsList(audioController, downloadManager, cacheService),
         ),
       ],
+    );
+  }
+
+  Widget _buildOfflineBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.amber.withValues(alpha: 0.15),
+      child: Row(
+        children: [
+          const Icon(Icons.offline_bolt, color: Colors.amber, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '⚡ Офлайн-режим • Доступно ${_results.length} сохраненных треков',
+              style: const TextStyle(
+                color: Colors.amber,
+                fontWeight: FontWeight.bold,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: Colors.amber,
+            ),
+            onPressed: () {
+              if (_searchController.text.isNotEmpty) {
+                _performSearch();
+              } else {
+                _loadCategory(_activeCategory.isNotEmpty ? _activeCategory : 'Топ Сегодня');
+              }
+            },
+            child: const Text('Повторить сеть'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -623,11 +731,32 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           children: [
             Text('Ошибка загрузки: $_error', style: const TextStyle(color: Colors.redAccent)),
             const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _activeCategory.isNotEmpty
-                  ? _loadCategory(_activeCategory)
-                  : _performSearch(),
-              child: const Text('Повторить'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _activeCategory.isNotEmpty
+                      ? _loadCategory(_activeCategory)
+                      : _performSearch(),
+                  child: const Text('Повторить'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.offline_pin, size: 18),
+                  label: const Text('Офлайн-треки'),
+                  onPressed: () async {
+                    final localTracks = await DatabaseHelper.instance.searchLocalTracks('');
+                    if (mounted) {
+                      setState(() {
+                        _selectedProvider = 'all';
+                        _results = localTracks;
+                        _isOfflineMode = true;
+                        _error = null;
+                      });
+                    }
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -844,6 +973,18 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (track.duration > Duration.zero)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Text(
+                    _formatDuration(track.duration),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withOpacity(0.55),
+                    ),
+                  ),
+                ),
               if (track.isStreamable)
                 IconButton(
                   icon: isCurrent && audioController.isBuffering

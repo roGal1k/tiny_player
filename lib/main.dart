@@ -49,6 +49,7 @@ void main() async {
   await audioCacheService.init();
 
   final localLibraryService = LocalLibraryService();
+  await localLibraryService.loadLibrary();
   final downloadManager = DownloadManager(
     registry: registry,
     libraryService: localLibraryService,

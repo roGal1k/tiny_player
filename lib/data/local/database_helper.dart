@@ -52,13 +52,14 @@ class DatabaseHelper {
       options: OpenDatabaseOptions(
         version: 1,
         onCreate: _createDB,
+        onOpen: _onOpenDB,
       ),
     );
   }
 
-  Future _createDB(Database db, int version) async {
+  Future _onOpenDB(Database db, [int? version]) async {
     await db.execute('''
-CREATE TABLE tracks (
+CREATE TABLE IF NOT EXISTS tracks (
   id TEXT PRIMARY KEY,
   provider_id TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -77,7 +78,7 @@ CREATE TABLE tracks (
 ''');
 
     await db.execute('''
-CREATE TABLE library (
+CREATE TABLE IF NOT EXISTS library (
   track_id TEXT PRIMARY KEY,
   added_at TEXT NOT NULL,
   FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
@@ -93,6 +94,16 @@ CREATE TABLE IF NOT EXISTS cached_tracks (
   FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
 )
 ''');
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+''');
+  }
+
+  Future _createDB(Database db, int version) async {
+    await _onOpenDB(db, version);
   }
 
   Future<void> insertTrack(Track track) async {
@@ -138,12 +149,29 @@ CREATE TABLE IF NOT EXISTS cached_tracks (
 
   Future<List<Track>> searchLocalTracks(String query) async {
     final db = await database;
+    final cleanQuery = query.trim();
+
+    if (cleanQuery.isEmpty) {
+      final result = await db.rawQuery('''
+        SELECT DISTINCT t.* FROM tracks t
+        WHERE t.id IN (SELECT track_id FROM library)
+           OR t.id IN (SELECT track_id FROM cached_tracks)
+           OR t.provider_id = 'local'
+        ORDER BY t.title ASC
+      ''');
+      return result.map((json) => Track.fromMap(json)).toList();
+    }
+
     final result = await db.rawQuery('''
-      SELECT t.* FROM tracks t
-      INNER JOIN library l ON t.id = l.track_id
-      WHERE t.title LIKE ? OR t.artist LIKE ?
+      SELECT DISTINCT t.* FROM tracks t
+      WHERE (
+        t.id IN (SELECT track_id FROM library)
+        OR t.id IN (SELECT track_id FROM cached_tracks)
+        OR t.provider_id = 'local'
+      )
+      AND (t.title LIKE ? OR t.artist LIKE ? OR t.album LIKE ?)
       ORDER BY t.title ASC
-    ''', ['%$query%', '%$query%']);
+    ''', ['%$cleanQuery%', '%$cleanQuery%', '%$cleanQuery%']);
     return result.map((json) => Track.fromMap(json)).toList();
   }
 
