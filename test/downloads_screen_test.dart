@@ -59,9 +59,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Загрузки и Офлайн'), findsOneWidget);
     expect(find.text('Загрузки'), findsOneWidget);
-    expect(find.text('Офлайн-кэш'), findsOneWidget);
     expect(find.text('Нет скачанных треков'), findsOneWidget);
 
     audioController.dispose();

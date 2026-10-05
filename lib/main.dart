@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/search_screen.dart';
 import 'presentation/screens/downloads_screen.dart';
+import 'presentation/screens/cache_screen.dart';
 import 'presentation/screens/settings_screen.dart';
 import 'presentation/controllers/audio_player_controller.dart';
 import 'presentation/widgets/mini_player_widget.dart';
@@ -115,7 +116,7 @@ class _MainLayoutState extends State<MainLayout> {
   final List<Widget> _screens = const [
     HomeScreen(),
     SearchScreen(),
-    HomeScreen(),
+    CacheScreen(),
     DownloadsScreen(),
     SettingsScreen(),
   ];
@@ -149,9 +150,9 @@ class _MainLayoutState extends State<MainLayout> {
                   label: Text('Search'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.library_music_outlined),
-                  selectedIcon: Icon(Icons.library_music),
-                  label: Text('Library'),
+                  icon: Icon(Icons.offline_pin_outlined),
+                  selectedIcon: Icon(Icons.offline_pin),
+                  label: Text('Cache'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.download_outlined),
@@ -204,7 +205,7 @@ class _MainLayoutState extends State<MainLayout> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-          BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
+          BottomNavigationBarItem(icon: Icon(Icons.offline_pin), label: 'Cache'),
           BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Downloads'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
         ],
