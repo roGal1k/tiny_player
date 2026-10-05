@@ -52,7 +52,10 @@ void main() {
       try {
         final tracks = await provider.search('NoCopyrightSounds');
         if (tracks.isEmpty) return;
-        final sampleTrack = tracks.first;
+        final sampleTrack = tracks.firstWhere(
+          (t) => t.duration.inMinutes > 0 && t.duration.inMinutes < 6,
+          orElse: () => tracks.first,
+        );
 
         // Test video stream retrieval (for "Watch Video" feature)
         final videoUrl = await provider.getVideoStreamUrl(sampleTrack);
@@ -81,13 +84,16 @@ void main() {
         // Tolerates live network/rate-limiting restrictions on automated tests
         expect(e, anyOf(isA<Exception>(), isA<Error>()));
       }
-    }, timeout: const Timeout(Duration(seconds: 45)));
+    }, timeout: const Timeout(Duration(minutes: 2)));
 
     test('getTrack retrieves single video by ID', () async {
       try {
         final tracks = await provider.search('NoCopyrightSounds');
         if (tracks.isEmpty) return;
-        final testId = tracks.first.id;
+        final testId = tracks.firstWhere(
+          (t) => t.duration.inMinutes > 0 && t.duration.inMinutes < 6,
+          orElse: () => tracks.first,
+        ).id;
 
         final track = await provider.getTrack(testId);
         if (track != null) {

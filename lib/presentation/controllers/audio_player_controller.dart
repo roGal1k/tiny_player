@@ -112,16 +112,26 @@ class AudioPlayerController extends ChangeNotifier {
       if (wasBuffering != _isBuffering || wasPlaying != _isPlaying) {
         notifyListeners();
       }
+    }, onError: (err) {
+      debugPrint('[AudioPlayerController] PlayerState stream error: $err');
+      _errorMessage = 'Ошибка аудио: $err';
+      _isPlaying = false;
+      _isBuffering = false;
+      notifyListeners();
     });
 
     _positionSubscription = _player.onPositionChanged.listen((pos) {
       _position = pos;
       notifyListeners();
+    }, onError: (err) {
+      debugPrint('[AudioPlayerController] Position stream error: $err');
     });
 
     _durationSubscription = _player.onDurationChanged.listen((dur) {
       _duration = dur;
       notifyListeners();
+    }, onError: (err) {
+      debugPrint('[AudioPlayerController] Duration stream error: $err');
     });
   }
 

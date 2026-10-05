@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -50,8 +51,10 @@ void main() {
     late LocalLibraryService libraryService;
     late DownloadManager manager;
     late http.Client mockClient;
+    late Directory tempDownloadDir;
 
     setUp(() async {
+      tempDownloadDir = await Directory.systemTemp.createTemp('batch_dl_test_');
       registry = ProviderRegistry();
       registry.registerProvider(MockBatchProvider());
       final dbHelper = await DatabaseHelper.inMemory();
@@ -70,7 +73,14 @@ void main() {
         libraryService: libraryService,
         dbHelper: dbHelper,
         client: mockClient,
+        customDownloadDir: tempDownloadDir.path,
       );
+    });
+
+    tearDown(() async {
+      if (await tempDownloadDir.exists()) {
+        await tempDownloadDir.delete(recursive: true);
+      }
     });
 
     test('downloadTracks downloads multiple downloadable tracks and filters non-downloadable', () async {

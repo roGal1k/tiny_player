@@ -35,6 +35,7 @@ class DownloadManager extends ChangeNotifier {
   final LocalLibraryService libraryService;
   final DatabaseHelper _dbHelper;
   final http.Client _client;
+  final String? customDownloadDir;
 
   final Map<String, DownloadTask> _tasks = {};
 
@@ -43,6 +44,7 @@ class DownloadManager extends ChangeNotifier {
     required this.libraryService,
     DatabaseHelper? dbHelper,
     http.Client? client,
+    this.customDownloadDir,
   })  : _dbHelper = dbHelper ?? DatabaseHelper.instance,
         _client = client ?? http.Client();
 
@@ -92,6 +94,14 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<String> _getDownloadDirectory() async {
+    if (customDownloadDir != null) {
+      final dir = Directory(customDownloadDir!);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir.path;
+    }
+
     // На Linux и Desktop отдаем приоритет папке Music пользователя
     final home = Platform.environment['HOME'];
     if (home != null && Directory(home).existsSync()) {
