@@ -84,7 +84,6 @@ class AudioPlayerController extends ChangeNotifier {
           iOS: AudioContextIOS(
             category: AVAudioSessionCategory.playback,
             options: const {
-              AVAudioSessionOptions.defaultToSpeaker,
               AVAudioSessionOptions.mixWithOthers,
             },
           ),
