@@ -175,65 +175,26 @@ class YouTubeProvider implements MusicProvider {
     } catch (_) {}
   }
 
-  /// Extracts pure audio track (M4A) using FFmpeg without re-encoding (-c:a copy).
-  /// Guarantees no video track is present, preventing GStreamer from opening video windows.
+  /// Resolves pure high-bitrate audio stream URL (M4A/AAC/Opus) directly from YouTube.
+  /// Starts streaming instantly (sub-second) without blocking on full file downloads.
   Future<String> _extractAudioTrack(Track track) async {
     try {
       final manifest = await _yt.videos.streamsClient.getManifest(VideoId(track.id));
-      final hasFfmpeg = await isFfmpegAvailable();
-      final muxedStreams = manifest.muxed;
 
-      if (hasFfmpeg && muxedStreams.isNotEmpty) {
-        final bestMuxed = muxedStreams.sortByVideoQuality().last;
-        await cacheDir.create(recursive: true);
-        final tmpFile = File(path.join(cacheDir.path, '${track.id}.tmp.m4a'));
-        final targetFile = _cacheFileFor(track.id);
-
-        try {
-          final res = await Process.run('ffmpeg', [
-            '-y',
-            '-reconnect', '1',
-            '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '5',
-            '-i', bestMuxed.url.toString(),
-            '-vn',
-            '-c:a', 'copy',
-            tmpFile.path,
-          ]);
-
-          if (res.exitCode == 0 &&
-              await tmpFile.exists() &&
-              (await tmpFile.length()) > 50000) {
-            if (await targetFile.exists()) {
-              await targetFile.delete();
-            }
-            await tmpFile.rename(targetFile.path);
-            return targetFile.path;
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('FFmpeg audio extraction error for ${track.id}: $e');
-          }
-        } finally {
-          if (await tmpFile.exists()) {
-            try {
-              await tmpFile.delete();
-            } catch (_) {}
-          }
-        }
-      }
-
-      // Fallback if FFmpeg is unavailable or extraction fails
+      // 1. Prefer pure audio streams (highest bitrate, no video track, plays instantly in all engines)
       final audioStreams = manifest.audioOnly;
       if (audioStreams.isNotEmpty) {
         return audioStreams.withHighestBitrate().url.toString();
       }
 
+      // 2. Fallback to any audio stream
       final anyAudio = manifest.audio;
       if (anyAudio.isNotEmpty) {
         return anyAudio.first.url.toString();
       }
 
+      // 3. Fallback to progressive muxed stream if no audio-only stream is present
+      final muxedStreams = manifest.muxed;
       if (muxedStreams.isNotEmpty) {
         return muxedStreams.sortByVideoQuality().last.url.toString();
       }

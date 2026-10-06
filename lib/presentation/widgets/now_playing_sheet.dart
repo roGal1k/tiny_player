@@ -386,6 +386,8 @@ class NowPlayingSheet extends StatelessWidget {
                     ? Image.network(
                         track.artworkUrl!,
                         fit: BoxFit.cover,
+                        cacheWidth: 440,
+                        cacheHeight: 440,
                         errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.music_note,
                           size: 80,

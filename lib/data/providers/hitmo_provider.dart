@@ -206,22 +206,8 @@ class HitmoProvider implements MusicProvider {
     if (track.sourceUrl.isEmpty) {
       throw Exception('No stream URL available for Hitmo track');
     }
-
-    try {
-      final uri = Uri.parse(track.sourceUrl);
-      final request = http.Request('GET', uri);
-      request.followRedirects = false; // Перехватываем 302 Location к прямому CDN
-      request.headers.addAll(_headers);
-
-      final response = await _client.send(request).timeout(const Duration(seconds: 4));
-      if (response.statusCode == 301 || response.statusCode == 302) {
-        final location = response.headers['location'];
-        if (location != null && location.isNotEmpty) {
-          return location; // Прямая ссылка на CDN (например cdn20.deliciousoranges.com)
-        }
-      }
-    } catch (_) {}
-
+    // Return direct stream URL immediately with 0ms delay.
+    // Native audio engines (ExoPlayer, Web Audio, GStreamer) and proxy follow HTTP 302 redirects automatically.
     return track.sourceUrl;
   }
 

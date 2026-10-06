@@ -91,7 +91,7 @@ class AudioPlayerController extends ChangeNotifier {
       try {
         _player.setAudioContext(AudioContext(
           android: const AudioContextAndroid(
-            isSpeakerphoneOn: true,
+            isSpeakerphoneOn: false,
             stayAwake: true,
             contentType: AndroidContentType.music,
             usageType: AndroidUsageType.media,
@@ -329,11 +329,9 @@ class AudioPlayerController extends ChangeNotifier {
       final cachedFile = cacheService?.getCachedFile(track);
       if (cachedFile != null) {
         debugPrint('[AudioPlayerController] Playing from audio cache: ${cachedFile.path}');
-        await _player.stop();
         await _player.play(DeviceFileSource(cachedFile.path));
       } else if (!kIsWeb && track.sourceUrl.isNotEmpty && File(track.sourceUrl).existsSync()) {
         debugPrint('[AudioPlayerController] Playing from local file: ${track.sourceUrl}');
-        await _player.stop();
         await _player.play(DeviceFileSource(track.sourceUrl));
       } else {
         final provider = registry.activeProviders.firstWhere(
@@ -344,7 +342,6 @@ class AudioPlayerController extends ChangeNotifier {
         final streamUrl = await provider.getStreamUrl(track);
         final effectiveUrl = WebProxyHelper.proxyStreamUrl(streamUrl);
 
-        await _player.stop();
         if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
           await _player.play(UrlSource(effectiveUrl));
           // Transparently cache streaming audio in background if enabled

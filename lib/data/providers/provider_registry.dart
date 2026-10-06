@@ -36,13 +36,39 @@ class ProviderRegistry {
   List<MusicProvider> get activeProviders => List.unmodifiable(
       _providers.where((p) => isProviderEnabled(p.providerId)));
 
+  final Map<String, List<Track>> _searchCache = {};
+  final Map<String, int> _cacheTimestamps = {};
+  static const int _cacheTtlMs = 5 * 60 * 1000; // 5 минут
+
+  void clearSearchCache() {
+    _searchCache.clear();
+    _cacheTimestamps.clear();
+  }
+
   /// Performs a meta-search across all registered and enabled providers
-  /// and merges the results.
+  /// and merges the results. Uses in-memory caching and per-provider timeouts.
   Future<List<Track>> searchAcrossProviders(String query, {Map<String, dynamic>? filters}) async {
+    final cleanQuery = query.trim().toLowerCase();
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Check memory cache
+    if (filters == null || filters.isEmpty) {
+      final cached = _searchCache[cleanQuery];
+      final cachedAt = _cacheTimestamps[cleanQuery] ?? 0;
+      if (cached != null && (now - cachedAt) < _cacheTtlMs) {
+        return List<Track>.from(cached);
+      }
+    }
+
     final searchFutures = activeProviders.map((provider) async {
       final stopwatch = Stopwatch()..start();
       try {
-        final results = await provider.search(query, filters: filters);
+        final results = await provider
+            .search(query, filters: filters)
+            .timeout(const Duration(milliseconds: 3500), onTimeout: () {
+          print('[${provider.name}] Search timed out after 3500ms');
+          return <Track>[];
+        });
         stopwatch.stop();
         print('[${provider.name}] Search took ${stopwatch.elapsedMilliseconds}ms. Found ${results.length} tracks.');
         return results;
@@ -58,6 +84,16 @@ class ProviderRegistry {
 
     // Interleave results round-robin so top tracks from all providers appear first
     final allTracks = _interleaveTracks(results);
+
+    // Cache successful results
+    if (allTracks.isNotEmpty && (filters == null || filters.isEmpty)) {
+      if (_searchCache.length > 60) {
+        _searchCache.clear();
+        _cacheTimestamps.clear();
+      }
+      _searchCache[cleanQuery] = List<Track>.unmodifiable(allTracks);
+      _cacheTimestamps[cleanQuery] = now;
+    }
 
     return allTracks;
   }

@@ -911,6 +911,8 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                         width: 50,
                         height: 50,
                         fit: BoxFit.cover,
+                        cacheWidth: 100,
+                        cacheHeight: 100,
                         errorBuilder: (ctx, err, stack) => Container(
                           width: 50,
                           height: 50,
