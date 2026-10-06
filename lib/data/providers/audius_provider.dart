@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../services/web_proxy_helper.dart';
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
 
@@ -34,7 +35,7 @@ class AudiusProvider implements MusicProvider {
     });
 
     try {
-      final response = await _client.get(uri);
+      final response = await _client.get(WebProxyHelper.proxyUri(uri));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         final data = decoded['data'] as List?;
@@ -67,7 +68,7 @@ class AudiusProvider implements MusicProvider {
     });
 
     try {
-      final response = await _client.get(uri);
+      final response = await _client.get(WebProxyHelper.proxyUri(uri));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         var data = decoded['data'];

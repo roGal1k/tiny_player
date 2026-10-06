@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
+import '../services/web_proxy_helper.dart';
 
 class HitmoProvider implements MusicProvider {
   String _mirrorUrl;
@@ -86,10 +87,11 @@ class HitmoProvider implements MusicProvider {
 
   Future<List<Track>> _fetchTracksFromUrl(Uri uri) async {
     try {
+      final requestUri = WebProxyHelper.proxyUri(uri);
       final response = await _client.get(
-        uri,
+        requestUri,
         headers: _headers,
-      ).timeout(const Duration(seconds: 7));
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final parsed = parseHtmlTracks(response.body, baseDomain: '${uri.scheme}://${uri.host}');

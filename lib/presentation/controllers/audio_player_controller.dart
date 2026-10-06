@@ -9,6 +9,7 @@ import '../../data/services/equalizer_service.dart';
 import '../../data/services/settings_service.dart';
 import '../../data/services/audio_cache_service.dart';
 import '../../data/services/core_audio_handler.dart';
+import '../../data/services/web_proxy_helper.dart';
 
 enum PlaybackRepeatMode {
   off,
@@ -259,7 +260,7 @@ class AudioPlayerController extends ChangeNotifier {
         debugPrint('[AudioPlayerController] Playing from audio cache: ${cachedFile.path}');
         await _player.stop();
         await _player.play(DeviceFileSource(cachedFile.path));
-      } else if (track.sourceUrl.isNotEmpty && File(track.sourceUrl).existsSync()) {
+      } else if (!kIsWeb && track.sourceUrl.isNotEmpty && File(track.sourceUrl).existsSync()) {
         debugPrint('[AudioPlayerController] Playing from local file: ${track.sourceUrl}');
         await _player.stop();
         await _player.play(DeviceFileSource(track.sourceUrl));
@@ -270,18 +271,19 @@ class AudioPlayerController extends ChangeNotifier {
         );
 
         final streamUrl = await provider.getStreamUrl(track);
+        final effectiveUrl = WebProxyHelper.proxyStreamUrl(streamUrl);
 
         await _player.stop();
-        if (streamUrl.startsWith('http://') || streamUrl.startsWith('https://')) {
-          await _player.play(UrlSource(streamUrl));
+        if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
+          await _player.play(UrlSource(effectiveUrl));
           // Transparently cache streaming audio in background if enabled
-          if (settingsService?.autoCacheAudio != false && cacheService != null) {
+          if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
             cacheService!.cacheTrackInBackground(track, streamUrl);
           }
         } else {
-          await _player.play(DeviceFileSource(streamUrl));
-          if (settingsService?.autoCacheAudio != false && cacheService != null) {
-            cacheService!.registerExistingLocalFile(track, streamUrl);
+          await _player.play(DeviceFileSource(effectiveUrl));
+          if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
+            cacheService!.registerExistingLocalFile(track, effectiveUrl);
           }
         }
       }

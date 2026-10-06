@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../services/web_proxy_helper.dart';
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
 
@@ -25,7 +26,7 @@ class InternetArchiveProvider implements MusicProvider {
       'rows': '15',
     });
 
-    final response = await http.get(uri);
+    final response = await http.get(WebProxyHelper.proxyUri(uri));
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final docs = data['response']['docs'] as List;
@@ -46,7 +47,7 @@ class InternetArchiveProvider implements MusicProvider {
   Future<String> getStreamUrl(Track track) async {
     // Internet archive streaming requires hitting the metadata endpoint to find the actual file name.
     final uri = Uri.parse('$_baseUrl/metadata/${track.id}');
-    final response = await http.get(uri);
+    final response = await http.get(WebProxyHelper.proxyUri(uri));
     
     if (response.statusCode == 200) {
       final data = json.decode(response.body);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
+import 'web_proxy_helper.dart';
 
 class GeniusLyricsService {
   String? accessToken;
@@ -55,9 +56,10 @@ class GeniusLyricsService {
   }
 
   Future<List<dynamic>> _searchGenius(String query) async {
-    final searchUri = Uri.parse('https://api.genius.com/search').replace(queryParameters: {
+    final rawSearchUri = Uri.parse('https://api.genius.com/search').replace(queryParameters: {
       'q': query,
     });
+    final searchUri = WebProxyHelper.proxyUri(rawSearchUri);
 
     try {
       var response = await http.get(
@@ -111,9 +113,9 @@ class GeniusLyricsService {
     if (songUrl == null || songUrl.isEmpty) return null;
 
     try {
-      // Загружаем HTML страницы песни
+      final pageUri = WebProxyHelper.proxyUri(Uri.parse(songUrl));
       final pageResponse = await http.get(
-        Uri.parse(songUrl),
+        pageUri,
         headers: {
           'User-Agent':
               'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

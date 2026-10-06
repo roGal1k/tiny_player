@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../services/web_proxy_helper.dart';
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
 
@@ -47,7 +48,7 @@ class SoundCloudProvider implements MusicProvider {
     });
 
     try {
-      final response = await http.get(uri);
+      final response = await http.get(WebProxyHelper.proxyUri(uri));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -78,7 +79,7 @@ class SoundCloudProvider implements MusicProvider {
       'client_id': clientId,
     });
 
-    final response = await http.get(uri);
+    final response = await http.get(WebProxyHelper.proxyUri(uri));
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       return data['url'] as String;

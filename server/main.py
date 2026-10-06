@@ -265,23 +265,56 @@ async def sync_push(
         "updated_at": now_ms,
     }
 
-# ----------------- CORS Stream Proxy -----------------
+# ----------------- CORS Stream & HTTP Proxy -----------------
 
-@app.get("/api/proxy/stream")
+DEFAULT_PROXY_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    "X-Forwarded-For": "85.249.20.1",
+    "X-Real-IP": "85.249.20.1",
+    "CF-Connecting-IP": "85.249.20.1",
+}
+
+@app.api_route("/api/proxy/stream", methods=["GET", "HEAD", "OPTIONS"])
 async def proxy_stream(request: Request, url: str = Query(..., description="Target stream URL")):
+    if request.method == "OPTIONS":
+        return Response(
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "Range, Content-Type, Accept, Authorization",
+                "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+            }
+        )
+
     if not url.startswith("http://") and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail="Invalid URL protocol")
 
-    # Forward Range header from client if present
+    req_headers = dict(DEFAULT_PROXY_HEADERS)
     range_header = request.headers.get("Range")
-    req_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    }
     if range_header:
         req_headers["Range"] = range_header
 
     client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
     try:
+        if request.method == "HEAD":
+            resp = await client.head(url, headers=req_headers)
+            res_headers = {}
+            for key in ["content-type", "content-length", "content-range", "accept-ranges"]:
+                val = resp.headers.get(key)
+                if val:
+                    res_headers[key] = val
+            res_headers["access-control-allow-origin"] = "*"
+            res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept, Authorization"
+            res_headers["access-control-expose-headers"] = "Content-Range, Content-Length, Accept-Ranges"
+            await client.aclose()
+            return Response(
+                status_code=resp.status_code,
+                headers=res_headers,
+                media_type=resp.headers.get("content-type", "audio/mpeg"),
+            )
+
         req = client.build_request("GET", url, headers=req_headers)
         resp = await client.send(req, stream=True)
 
@@ -292,7 +325,7 @@ async def proxy_stream(request: Request, url: str = Query(..., description="Targ
                 res_headers[key] = val
 
         res_headers["access-control-allow-origin"] = "*"
-        res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept"
+        res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept, Authorization"
         res_headers["access-control-expose-headers"] = "Content-Range, Content-Length, Accept-Ranges"
 
         async def stream_body():
@@ -312,3 +345,49 @@ async def proxy_stream(request: Request, url: str = Query(..., description="Targ
     except Exception as e:
         await client.aclose()
         raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
+
+@app.api_route("/api/proxy/http", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def proxy_http(request: Request, url: str = Query(..., description="Target URL")):
+    if request.method == "OPTIONS":
+        return Response(
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Invalid URL protocol")
+
+    req_headers = dict(DEFAULT_PROXY_HEADERS)
+    for h in ["accept", "content-type"]:
+        if h in request.headers:
+            req_headers[h] = request.headers[h]
+
+    body = await request.body() if request.method == "POST" else None
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=25.0) as client:
+        try:
+            resp = await client.request(
+                method=request.method,
+                url=url,
+                headers=req_headers,
+                content=body,
+            )
+            res_headers = {
+                "access-control-allow-origin": "*",
+                "access-control-allow-methods": "GET, POST, HEAD, OPTIONS",
+                "access-control-allow-headers": "*",
+            }
+            if "content-type" in resp.headers:
+                res_headers["content-type"] = resp.headers["content-type"]
+
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                headers=res_headers,
+                media_type=resp.headers.get("content-type"),
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")

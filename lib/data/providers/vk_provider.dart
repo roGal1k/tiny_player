@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../services/web_proxy_helper.dart';
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
 
@@ -35,7 +36,7 @@ class VkProvider implements MusicProvider {
 
     try {
       // VK API часто требует специфичный User-Agent для работы с аудио
-      final response = await http.get(uri, headers: {
+      final response = await http.get(WebProxyHelper.proxyUri(uri), headers: {
         'User-Agent': 'KateMobileAndroid/56 lite-460 (Android 4.4.2; SDK 19; x86; unknown Android SDK built for x86; en)'
       });
 

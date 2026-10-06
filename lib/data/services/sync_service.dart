@@ -3,12 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/track.dart';
 import '../local/database_helper.dart';
+import 'web_proxy_helper.dart';
 
 class SyncService extends ChangeNotifier {
   final DatabaseHelper _dbHelper;
   final http.Client _client;
 
-  String _serverUrl = 'http://galik-tech.su';
+  String _serverUrl = WebProxyHelper.webOrigin;
   String? _token;
   String? _username;
   bool _isSyncing = false;

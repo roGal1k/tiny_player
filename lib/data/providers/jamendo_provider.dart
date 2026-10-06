@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
+import '../services/web_proxy_helper.dart';
 
 class JamendoProvider implements MusicProvider {
   // Для продакшена ключ лучше выносить в .env файл
@@ -34,7 +35,7 @@ class JamendoProvider implements MusicProvider {
       'include': 'musicinfo', // для жанров
     });
 
-    final response = await http.get(uri);
+    final response = await http.get(WebProxyHelper.proxyUri(uri));
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
@@ -54,7 +55,7 @@ class JamendoProvider implements MusicProvider {
       'id': id,
     });
 
-    final response = await http.get(uri);
+    final response = await http.get(WebProxyHelper.proxyUri(uri));
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final results = data['results'] as List;
