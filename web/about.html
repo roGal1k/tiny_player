@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>galik-tech | Full-Stack & Systems Developer</title>
+  <meta name="description" content="Инженерное портфолио: кроссплатформенная разработка на Flutter, стриминг мультимедиа, асинхронный бэкенд на Go и Python, архитектура серверов и реверс-инжиниринг.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2306b6d4'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
+  <style>
+    :root {
+      --bg: #090d16;
+      --bg-surface: #0f1523;
+      --card-bg: rgba(17, 24, 39, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-hover: rgba(6, 182, 212, 0.45);
+      --accent-cyan: #06b6d4;
+      --accent-cyan-glow: rgba(6, 182, 212, 0.25);
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-orange: #f97316;
+      --accent-green: #10b981;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      color-scheme: dark;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(circle at 15% 10%, rgba(6, 182, 212, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 25%, rgba(139, 92, 246, 0.1) 0%, transparent 45%),
+        radial-gradient(circle at 50% 80%, rgba(249, 115, 22, 0.08) 0%, transparent 50%);
+      color: var(--text-main);
+      font-family: var(--font);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Navbar */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(9, 13, 22, 0.85);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .nav-container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+    }
+    .logo-badge {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+    .logo span {
+      color: var(--accent-cyan);
+    }
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+    .nav-links a:hover {
+      color: var(--text-main);
+    }
+    .nav-btn {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #000;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px var(--accent-cyan-glow);
+    }
+
+    /* Container */
+    main {
+      flex: 1;
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+      width: 100%;
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 40px 0 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .status-pill {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.9); }
+    }
+    .hero-title {
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+    .hero-title .gradient-text {
+      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 800px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #04101e;
+      box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(6, 182, 212, 0.45);
+    }
+    .btn-secondary {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    /* Live Telemetry Card */
+    .telemetry-bar {
+      margin-top: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 18px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .telemetry-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .telemetry-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+    .telemetry-val {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .ping-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .ping-badge:hover {
+      background: rgba(6, 182, 212, 0.25);
+    }
+
+    /* Section Typography */
+    .section {
+      margin-top: 60px;
+    }
+    .section-header {
+      margin-bottom: 28px;
+    }
+    .section-tag {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+      display: block;
+    }
+    .section-title {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-top: 6px;
+      max-width: 760px;
+    }
+
+    /* Case Study Card */
+    .case-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 36px;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+    .case-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple), var(--accent-orange));
+    }
+    .case-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 28px 0;
+    }
+    .metric-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+      transition: border-color 0.2s ease;
+    }
+    .metric-box:hover {
+      border-color: var(--card-border-hover);
+    }
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: #38bdf8;
+      letter-spacing: -0.02em;
+    }
+    .metric-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Architectural Diagram Box */
+    .arch-box {
+      background: rgba(10, 15, 25, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 24px;
+      margin: 28px 0;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+    }
+    .arch-title {
+      font-family: var(--font);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+    }
+    .flow-node {
+      background: var(--bg-surface);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 14px;
+      position: relative;
+    }
+    .flow-node b {
+      color: var(--accent-cyan);
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+    .flow-node p {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    /* Key Solutions List */
+    .solutions-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .solution-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .solution-item h4 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .solution-item p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* Skills Grid */
+    .skills-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .skill-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .skill-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--card-border-hover);
+    }
+    .skill-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .skill-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(6, 182, 212, 0.1);
+      display: grid;
+      place-items: center;
+      color: var(--accent-cyan);
+    }
+    .skill-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      font-weight: 500;
+    }
+    .tag.primary {
+      background: rgba(6, 182, 212, 0.12);
+      border-color: rgba(6, 182, 212, 0.3);
+      color: #38bdf8;
+    }
+
+    /* Downloads & QR Section */
+    .download-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .download-info {
+      flex: 1;
+      min-width: 280px;
+    }
+    .download-info h3 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 10px;
+    }
+    .download-info p {
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .apk-details {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 24px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .qr-container {
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+    .qr-container img, .qr-container svg {
+      width: 140px;
+      height: 140px;
+      display: block;
+    }
+    .qr-label {
+      color: #0f172a;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 40px 24px;
+      background: rgba(9, 13, 22, 0.9);
+      margin-top: auto;
+    }
+    .footer-container {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .footer-left {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s ease;
+    }
+    .footer-links a:hover {
+      color: var(--accent-cyan);
+    }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .case-card { padding: 24px; }
+      .telemetry-bar { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <header>
+    <div class="nav-container">
+      <a href="#" class="logo">
+        <span class="logo-badge"></span>
+        galik<span>-tech</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#case-study">Кейс CorePlayer</a></li>
+        <li><a href="#architecture">Архитектура</a></li>
+        <li><a href="#skills">Стек и навыки</a></li>
+        <li><a href="#downloads">Скачать APK</a></li>
+        <li><a href="https://t.me/galik" target="_blank">Контакты</a></li>
+      </ul>
+      <a href="/" class="nav-btn">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        Web-плеер онлайн
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>Доступен для найма &middot; Инфраструктура в сети</span>
+      </div>
+
+      <h1 class="hero-title">
+        Full-Stack & Systems Developer<br>
+        <span class="gradient-text">Кроссплатформенные системы, стриминг и бэкенд</span>
+      </h1>
+
+      <p class="hero-desc">
+        Создаю быстрые, отказоустойчивые клиент-серверные приложения и мультимедийные сервисы. Экспертиза в Flutter (Android / Web / Linux), асинхронном бэкенде (Go, Python/FastAPI), оптимизации сетевого I/O, реверс-инжиниринге медиа-протоколов и администрировании Linux-инфраструктуры.
+      </p>
+
+      <div class="hero-actions">
+        <a href="/" class="btn btn-primary">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          Запустить Web CorePlayer
+        </a>
+        <a href="#downloads" class="btn btn-secondary">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          Скачать Android APK
+        </a>
+        <a href="https://t.me/galik" target="_blank" class="btn btn-secondary">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.19-.08-.05-.19-.02-.27 0-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.05-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.79-1.63 4.58-1.91 5.09-1.92.11 0 .37.03.54.17.14.12.18.28.2.45-.02.07-.02.21-.04.37z"/></svg>
+          Telegram: @galik
+        </a>
+        <a href="https://github.com/roGal1k/tiny_player" target="_blank" class="btn btn-secondary">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
+          GitHub репозиторий
+        </a>
+      </div>
+
+      <!-- Live Server Telemetry -->
+      <div class="telemetry-bar">
+        <div class="telemetry-item">
+          <span class="telemetry-label">Серверная нода</span>
+          <span class="telemetry-val">146.71.85.50 &middot; SoftShell VPS</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Стек шлюза</span>
+          <span class="telemetry-val">Caddy 2 + FastAPI (Uvicorn)</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">База данных &amp; Синхронизация</span>
+          <span class="telemetry-val">aiosqlite &middot; REST / JWT Auth</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Отклик API в реальном времени</span>
+          <button id="pingBtn" class="ping-badge" onclick="measurePing()">
+            <span id="pingDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#06b6d4;margin-right:6px"></span>
+            <span id="pingText">Измерить пинг</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Case Study: CorePlayer -->
+    <section id="case-study" class="section">
+      <div class="section-header">
+        <span class="section-tag">Флагманский кейс &middot; Мультимедиа &amp; Сетевой стек</span>
+        <h2 class="section-title">CorePlayer — Высокопроизводительный стриминговый аудиоплеер</h2>
+        <p class="section-desc">
+          Полнофункциональный мультиплатформенный музыкальный плеер нового поколения. Решает проблему закрытых экосистем, платных подписок, рекламы и гео-ограничений за счёт параллельного поиска и потокового аудио-проксирования.
+        </p>
+      </div>
+
+      <div class="case-card">
+        <!-- Key Metrics -->
+        <div class="case-metrics-grid">
+          <div class="metric-box">
+            <div class="metric-value">&lt; 300 мс</div>
+            <div class="metric-label">Время старта любого трека (Time to First Audio Frame)</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">0 мс</div>
+            <div class="metric-label">Выдача результатов поиска из интеллектуального кэша</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">3 в 1</div>
+            <div class="metric-label">Единая кодовая база: Android, Web (WASM/CanvasKit), Linux</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">100% Zero Ads</div>
+            <div class="metric-label">Чистый звук без спонсорских вставок и ограничений</div>
+          </div>
+        </div>
+
+        <!-- Architecture Flow -->
+        <div id="architecture" class="arch-box">
+          <div class="arch-title">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Архитектурный пайплайн доставки и воспроизведения потока
+          </div>
+          <div class="flow-grid">
+            <div class="flow-node">
+              <b>1. Клиент Flutter</b>
+              <p>Android (ExoPlayer), Web (HTML5 Audio), Linux (GStreamer). Фоновое воспроизведение, Media Notification, Lockscreen-пульт, адаптивный мини-плеер.</p>
+            </div>
+            <div class="flow-node">
+              <b>2. Caddy Reverse Proxy</b>
+              <p>TLS-терминация, HTTP/2, мгновенный стриминг без промежуточной буферизации (директива <code>flush_interval -1</code>).</p>
+            </div>
+            <div class="flow-node">
+              <b>3. FastAPI Media Gateway</b>
+              <p>Асинхронный пул соединений (httpx keepalive 200 conns). Обход CORS браузера, маскировка заголовков и нарезка чанков по 16 КБ.</p>
+            </div>
+            <div class="flow-node">
+              <b>4. Источники контента</b>
+              <p>Агрегация на лету: YouTube Music (Opus/AAC audio-only stream extraction), Hitmo (MP3 Direct CDN), NoCopyrightSounds (NCS).</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Technical Challenges Overcome -->
+        <h3 style="font-size:1.25rem; font-weight:700; margin-top:24px;">Решённые инженерные вызовы:</h3>
+        <div class="solutions-list">
+          <div class="solution-item">
+            <h4>
+              <span style="color:var(--accent-cyan)">⚡</span>
+              Устранение задержки старта треков с 15 сек до 250 мс
+            </h4>
+            <p>
+              Ранее скачивание видео с последующей перепаковкой FFmpeg вызывало огромные паузы. Переписал алгоритм на прямой стриминг аудиопотока высокого битрейта (AAC/Opus) без необходимости трогать видеопоток.
+            </p>
+          </div>
+          <div class="solution-item">
+            <h4>
+              <span style="color:var(--accent-purple)">🔍</span>
+              Отказоустойчивый параллельный мета-поиск
+            </h4>
+            <p>
+              Реализован параллельный опрос нескольких провайдеров с индивидуальными таймаутами (3.5 сек). Если один источник недоступен или блокируется провайдером, приложение мгновенно отображает результаты от остальных.
+            </p>
+          </div>
+          <div class="solution-item">
+            <h4>
+              <span style="color:var(--accent-orange)">🖼️</span>
+              Оптимизация GPU-памяти и плавный скроллинг
+            </h4>
+            <p>
+              Декодирование сотен Full-HD обложек в списках перегружало GPU мобильных устройств. Ограничил декодирование миниатюр в видеопамяти (<code>cacheWidth: 100</code>), что исключило фризы и просадки FPS.
+            </p>
+          </div>
+          <div class="solution-item">
+            <h4>
+              <span style="color:var(--accent-green)">🔄</span>
+              Двусторонняя облачная синхронизация библиотеки
+            </h4>
+            <p>
+              Спроектировал и развернул систему аккаунтов на JWT и aiosqlite: библиотека треков, персональные плейлисты и история прослушивания бесшовно синхронизируются между мобильным телефоном и веб-версией.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Skills & Tech Stack Matrix -->
+    <section id="skills" class="section">
+      <div class="section-header">
+        <span class="section-tag">Компетенции &middot; Технологический стек</span>
+        <h2 class="section-title">Матрица навыков и стек разработки</h2>
+        <p class="section-desc">
+          Практический опыт реализации коммерческих и высоконагруженных задач полного цикла — от архитектуры ядра до настройки продакшн-окружения.
+        </p>
+      </div>
+
+      <div class="skills-grid">
+        <!-- Mobile & Client -->
+        <div class="skill-card">
+          <div class="skill-header">
+            <div class="skill-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            </div>
+            <div class="skill-title">Mobile &amp; Frontend</div>
+          </div>
+          <p style="font-size:0.9rem; color:var(--text-muted);">
+            Кроссплатформенная разработка с глубоким пониманием рендеринга Flutter, управления состоянием и анимаций.
+          </p>
+          <div class="tags">
+            <span class="tag primary">Flutter</span>
+            <span class="tag primary">Dart</span>
+            <span class="tag">Clean Architecture</span>
+            <span class="tag">BLoC / Provider</span>
+            <span class="tag">WebAssembly</span>
+            <span class="tag">CanvasKit</span>
+            <span class="tag">Adaptive UI</span>
+            <span class="tag">MethodChannels</span>
+          </div>
+        </div>
+
+        <!-- Backend & APIs -->
+        <div class="skill-card">
+          <div class="skill-header">
+            <div class="skill-icon" style="color:var(--accent-purple); background:rgba(139,92,246,0.1);">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="skill-title">Backend &amp; Services</div>
+          </div>
+          <p style="font-size:0.9rem; color:var(--text-muted);">
+            Высокопроизводительные асинхронные микросервисы, REST API, работа с базами данных и авторизацией.
+          </p>
+          <div class="tags">
+            <span class="tag primary">Go (Golang)</span>
+            <span class="tag primary">Python / FastAPI</span>
+            <span class="tag">AsyncIO</span>
+            <span class="tag">aiosqlite / SQLite</span>
+            <span class="tag">PostgreSQL</span>
+            <span class="tag">JWT Authentication</span>
+            <span class="tag">Connection Pooling</span>
+            <span class="tag">HTTP/2 &amp; WebSockets</span>
+          </div>
+        </div>
+
+        <!-- Audio & Streaming -->
+        <div class="skill-card">
+          <div class="skill-header">
+            <div class="skill-icon" style="color:var(--accent-orange); background:rgba(249,115,22,0.1);">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </div>
+            <div class="skill-title">Media &amp; Streaming</div>
+          </div>
+          <p style="font-size:0.9rem; color:var(--text-muted);">
+            Низкоуровневая обработка аудио, стриминг по протоколам HTTP Live Streaming, байт-диапазоны и транскодирование.
+          </p>
+          <div class="tags">
+            <span class="tag primary">Audio Streaming</span>
+            <span class="tag primary">Range Requests</span>
+            <span class="tag">FFmpeg</span>
+            <span class="tag">ExoPlayer</span>
+            <span class="tag">GStreamer</span>
+            <span class="tag">Opus / AAC / MP3</span>
+            <span class="tag">CORS Bypassing</span>
+            <span class="tag">Lockscreen Media API</span>
+          </div>
+        </div>
+
+        <!-- Linux & DevOps -->
+        <div class="skill-card">
+          <div class="skill-header">
+            <div class="skill-icon" style="color:var(--accent-green); background:rgba(16,185,129,0.1);">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            </div>
+            <div class="skill-title">DevOps &amp; Linux</div>
+          </div>
+          <p style="font-size:0.9rem; color:var(--text-muted);">
+            Администрирование серверов, отказоустойчивые веб-серверы, реверс-прокси, сетевая безопасность и автоматизация.
+          </p>
+          <div class="tags">
+            <span class="tag primary">Linux (Debian/Ubuntu)</span>
+            <span class="tag primary">Caddy Web Server</span>
+            <span class="tag">Systemd Services</span>
+            <span class="tag">Nginx / Reverse Proxy</span>
+            <span class="tag">Docker</span>
+            <span class="tag">TLS / Let's Encrypt</span>
+            <span class="tag">Git / CI/CD</span>
+            <span class="tag">Bash Scripting</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download APK Section -->
+    <section id="downloads" class="section">
+      <div class="section-header">
+        <span class="section-tag">Мобильное приложение &middot; Живое тестирование</span>
+        <h2 class="section-title">Установить CorePlayer на Android</h2>
+        <p class="section-desc">
+          Протестируйте стабильность, скорость поиска и фоновое воспроизведение плеера прямо на своём устройстве.
+        </p>
+      </div>
+
+      <div class="download-card">
+        <div class="download-info">
+          <h3>CorePlayer Release APK</h3>
+          <p>
+            Полноценная нативная сборка с интеграцией системного аудиоплеера Android (уведомления в шторке, виджет блокировки экрана, Bluetooth гарнитура, фоновая работа без засыпания).
+          </p>
+          <div class="apk-details">
+            <span>Платформа: Android 8.0+</span>
+            <span>Формат: .apk (Release)</span>
+            <span>Размер: ~64 МБ</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:12px;">
+            <a href="/about/core_player.apk" download class="btn btn-primary">
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+              Скачать core_player.apk
+            </a>
+            <a href="/" class="btn btn-secondary">
+              Открыть веб-версию
+            </a>
+          </div>
+        </div>
+
+        <div class="qr-container">
+          <img src="/about/apk_qr.svg" alt="QR-код для скачивания CorePlayer APK">
+          <span class="qr-label">Сканируйте камерой</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-container">
+      <div class="footer-left">
+        <b style="color:var(--text-main);">galik-tech</b> &middot; Инженерные решения и разработка ПО &middot; &copy; 2026
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://t.me/galik" target="_blank">Telegram</a></li>
+        <li><a href="https://github.com/roGal1k/tiny_player" target="_blank">GitHub</a></li>
+        <li><a href="/">Web CorePlayer</a></li>
+        <li><a href="#case-study">Кейс-стади</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Live Diagnostic Script -->
+  <script>
+    async function measurePing() {
+      const btn = document.getElementById('pingBtn');
+      const text = document.getElementById('pingText');
+      const dot = document.getElementById('pingDot');
+      
+      text.innerText = "Измерение...";
+      dot.style.background = "#eab308";
+      const start = performance.now();
+      
+      try {
+        const resp = await fetch('/api/auth/me', { method: 'GET' });
+        const latency = Math.round(performance.now() - start);
+        dot.style.background = "#10b981";
+        text.innerText = latency + " мс (Caddy/FastAPI)";
+      } catch (err) {
+        dot.style.background = "#ef4444";
+        text.innerText = "Ошибка сети";
+      }
+    }
+
+    // Measure automatically on page load after 800ms
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(measurePing, 800);
+    });
+  </script>
+</body>
+</html>
