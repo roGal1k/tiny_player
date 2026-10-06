@@ -33,6 +33,12 @@ class FakeLocalLibraryService extends ChangeNotifier implements LocalLibraryServ
 
   @override
   Future<int> scanDirectory(String directoryPath) async => 0;
+
+  @override
+  bool isFavorite(String trackId) => false;
+
+  @override
+  Future<bool> toggleFavorite(Track track) async => false;
 }
 
 void main() {

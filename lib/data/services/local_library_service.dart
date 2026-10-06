@@ -19,6 +19,27 @@ class LocalLibraryService extends ChangeNotifier {
   bool get isScanning => _isScanning;
   String? get statusMessage => _statusMessage;
 
+  bool isFavorite(String trackId) {
+    return _tracks.any((t) => t.id == trackId);
+  }
+
+  Future<bool> toggleFavorite(Track track) async {
+    final exists = isFavorite(track.id);
+    if (exists) {
+      await _dbHelper.removeFromLibrary(track.id);
+      _tracks.removeWhere((t) => t.id == track.id);
+      notifyListeners();
+      return false;
+    } else {
+      await _dbHelper.addToLibrary(track);
+      if (!_tracks.any((t) => t.id == track.id)) {
+        _tracks.insert(0, track);
+      }
+      notifyListeners();
+      return true;
+    }
+  }
+
   Future<void> loadLibrary() async {
     try {
       await _autoSyncDownloadDirectory();

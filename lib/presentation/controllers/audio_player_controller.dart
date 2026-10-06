@@ -10,6 +10,7 @@ import '../../data/services/settings_service.dart';
 import '../../data/services/audio_cache_service.dart';
 import '../../data/services/core_audio_handler.dart';
 import '../../data/services/web_proxy_helper.dart';
+import '../../data/services/web_media_session_helper.dart';
 
 enum PlaybackRepeatMode {
   off,
@@ -41,6 +42,11 @@ class AudioPlayerController extends ChangeNotifier {
   PlaybackRepeatMode _repeatMode = PlaybackRepeatMode.all;
   bool _isShuffle = false;
 
+  // Sleep timer state
+  Timer? _sleepTimer;
+  DateTime? _sleepTimerEndTime;
+  bool _sleepAtEndOfTrack = false;
+
   StreamSubscription<PlayerState>? _playerStateSubscription;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration?>? _durationSubscription;
@@ -68,6 +74,15 @@ class AudioPlayerController extends ChangeNotifier {
       audioHandler!.onSkipToPreviousCallback = playPrevious;
       audioHandler!.onSeekCallback = seek;
       audioHandler!.onStopCallback = stop;
+    }
+    if (kIsWeb) {
+      WebMediaSessionHelper.setActionHandlers(
+        onPlay: resume,
+        onPause: pause,
+        onNext: playNext,
+        onPrevious: playPrevious,
+        onSeek: seek,
+      );
     }
   }
 
@@ -148,6 +163,52 @@ class AudioPlayerController extends ChangeNotifier {
       _queue.isNotEmpty &&
       (_currentIndex > 0 || _repeatMode == PlaybackRepeatMode.all || _position.inSeconds > 3);
 
+  bool get isSleepTimerActive => _sleepTimer != null || _sleepAtEndOfTrack;
+  bool get sleepAtEndOfTrack => _sleepAtEndOfTrack;
+  Duration? get sleepTimerRemaining {
+    if (_sleepTimerEndTime == null) return null;
+    final diff = _sleepTimerEndTime!.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+
+  void setSleepTimer(Duration duration) {
+    cancelSleepTimer();
+    _sleepTimerEndTime = DateTime.now().add(duration);
+    _sleepTimer = Timer(duration, _triggerSleepFadeOutAndPause);
+    notifyListeners();
+  }
+
+  void setSleepAtEndOfTrack(bool value) {
+    cancelSleepTimer();
+    _sleepAtEndOfTrack = value;
+    notifyListeners();
+  }
+
+  void cancelSleepTimer() {
+    _cancelSleepTimerInternal();
+    notifyListeners();
+  }
+
+  void _cancelSleepTimerInternal() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepTimerEndTime = null;
+    _sleepAtEndOfTrack = false;
+  }
+
+  Future<void> _triggerSleepFadeOutAndPause() async {
+    _cancelSleepTimerInternal();
+    final originalVol = _baseVolume;
+    for (int i = 10; i >= 0; i--) {
+      final stepVol = (originalVol * (i / 10.0)).clamp(0.0, 1.0);
+      await _player.setVolume(stepVol);
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    await pause();
+    await _applyEffectiveVolume();
+    notifyListeners();
+  }
+
   void _initStreams() {
     _playerStateSubscription = _player.onPlayerStateChanged.listen((state) {
       final wasBuffering = _isBuffering;
@@ -200,6 +261,13 @@ class AudioPlayerController extends ChangeNotifier {
   }
 
   void _onTrackCompleted() {
+    if (_sleepAtEndOfTrack) {
+      _sleepAtEndOfTrack = false;
+      _cancelSleepTimerInternal();
+      stop();
+      return;
+    }
+
     if (_repeatMode == PlaybackRepeatMode.one) {
       if (_currentTrack != null) {
         _executePlay(_currentTrack!);
@@ -250,6 +318,9 @@ class AudioPlayerController extends ChangeNotifier {
     _duration = track.duration;
     _isBuffering = true;
     audioHandler?.updateTrack(track);
+    if (kIsWeb) {
+      WebMediaSessionHelper.updateMetadata(track);
+    }
     _syncAudioServiceState();
     notifyListeners();
 
@@ -573,6 +644,7 @@ class AudioPlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _sleepTimer?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();

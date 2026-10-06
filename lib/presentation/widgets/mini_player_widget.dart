@@ -8,6 +8,7 @@ import '../screens/equalizer_screen.dart';
 import '../screens/queue_screen.dart';
 import '../../domain/models/track.dart';
 import '../../data/services/video_launcher_service.dart';
+import '../../data/services/local_library_service.dart';
 import 'now_playing_sheet.dart';
 
 class MiniPlayerWidget extends StatelessWidget {
@@ -235,7 +236,28 @@ class MiniPlayerWidget extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+
+                // Избранное ❤️
+                Builder(
+                  builder: (ctx) {
+                    final libService = Provider.of<LocalLibraryService?>(ctx);
+                    if (libService == null) return const SizedBox.shrink();
+                    final isFav = libService.isFavorite(track.id);
+                    return IconButton(
+                      iconSize: 22,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      constraints: const BoxConstraints(),
+                      icon: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        color: isFav ? Colors.redAccent : Colors.white60,
+                      ),
+                      tooltip: isFav ? 'В избранном' : 'В избранное',
+                      onPressed: () => libService.toggleFavorite(track),
+                    );
+                  },
+                ),
+                const SizedBox(width: 6),
 
                 if (isMobile) ...[
                   // Лаконичные мобильные контролы (без переполнения экрана)

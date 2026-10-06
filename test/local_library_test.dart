@@ -59,4 +59,31 @@ void main() {
     // Cleanup
     await tempDir.delete(recursive: true);
   });
+
+  test('LocalLibraryService handles favorites toggle and query', () async {
+    final dbHelper = await DatabaseHelper.inMemory();
+    final libraryService = LocalLibraryService(dbHelper: dbHelper);
+    await libraryService.loadLibrary();
+
+    const track = Track(
+      id: 'fav_track_1',
+      providerId: 'hitmo',
+      title: 'Midnight City',
+      artist: 'M83',
+      duration: Duration(minutes: 4, seconds: 3),
+      sourceUrl: 'https://example.com/stream.mp3',
+    );
+
+    expect(libraryService.isFavorite('fav_track_1'), isFalse);
+
+    // Add to favorites
+    final added = await libraryService.toggleFavorite(track);
+    expect(added, isTrue);
+    expect(libraryService.isFavorite('fav_track_1'), isTrue);
+
+    // Remove from favorites
+    final removed = await libraryService.toggleFavorite(track);
+    expect(removed, isFalse);
+    expect(libraryService.isFavorite('fav_track_1'), isFalse);
+  });
 }

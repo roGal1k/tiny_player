@@ -7,6 +7,8 @@ import '../../data/services/video_launcher_service.dart';
 import '../screens/equalizer_screen.dart';
 import '../screens/queue_screen.dart';
 import '../../data/services/genius_lyrics_service.dart';
+import '../../data/services/local_library_service.dart';
+import 'audio_visualizer_widget.dart';
 
 class NowPlayingSheet extends StatelessWidget {
   const NowPlayingSheet({super.key});
@@ -122,6 +124,139 @@ class NowPlayingSheet extends StatelessWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  void _showSleepTimerModal(BuildContext context, AudioPlayerController controller) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetCtx) {
+        final theme = Theme.of(context);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.bedtime, size: 20, color: Colors.indigoAccent),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Таймер сна',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (controller.isSleepTimerActive) ...[
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    controller.sleepAtEndOfTrack
+                        ? 'Остановится в конце текущего трека'
+                        : 'Осталось: ${_formatDuration(controller.sleepTimerRemaining ?? Duration.zero)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.timer_off, color: Colors.redAccent),
+                  title: const Text('Отключить таймер', style: TextStyle(color: Colors.redAccent)),
+                  onTap: () {
+                    controller.cancelSleepTimer();
+                    Navigator.of(bottomSheetCtx).pop();
+                  },
+                ),
+                const Divider(),
+              ],
+              ListTile(
+                leading: const Icon(Icons.skip_next),
+                title: const Text('В конце этого трека'),
+                onTap: () {
+                  controller.setSleepAtEndOfTrack(true);
+                  Navigator.of(bottomSheetCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Таймер сна: музыка остановится после этого трека'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('15 минут'),
+                onTap: () {
+                  controller.setSleepTimer(const Duration(minutes: 15));
+                  Navigator.of(bottomSheetCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Таймер сна установлен на 15 минут'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('30 минут'),
+                onTap: () {
+                  controller.setSleepTimer(const Duration(minutes: 30));
+                  Navigator.of(bottomSheetCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Таймер сна установлен на 30 минут'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('45 минут'),
+                onTap: () {
+                  controller.setSleepTimer(const Duration(minutes: 45));
+                  Navigator.of(bottomSheetCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Таймер сна установлен на 45 минут'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('60 минут'),
+                onTap: () {
+                  controller.setSleepTimer(const Duration(minutes: 60));
+                  Navigator.of(bottomSheetCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Таймер сна установлен на 60 минут'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -266,29 +401,75 @@ class NowPlayingSheet extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
-          // Track Info
-          Text(
-            track.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          // Dynamic Audio Visualizer
+          AudioVisualizerWidget(
+            color: providerColor,
+            isPlaying: controller.isPlaying,
+            height: 26,
           ),
-          const SizedBox(height: 4),
-          Text(
-            track.artist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
-            ),
+
+          const SizedBox(height: 12),
+
+          // Track Info & Favorite button
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Builder(
+                builder: (ctx) {
+                  final libService = Provider.of<LocalLibraryService?>(ctx);
+                  if (libService == null) return const SizedBox.shrink();
+                  final isFav = libService.isFavorite(track.id);
+                  return IconButton(
+                    icon: Icon(
+                      isFav ? Icons.favorite : Icons.favorite_border,
+                      color: isFav ? Colors.redAccent : Colors.white70,
+                      size: 26,
+                    ),
+                    tooltip: isFav ? 'В избранном' : 'Добавить в избранное',
+                    onPressed: () async {
+                      final added = await libService.toggleFavorite(track);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              added ? 'Добавлено в избранное ❤️' : 'Удалено из избранного',
+                            ),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
+            ],
           ),
 
           const SizedBox(height: 16),
@@ -418,6 +599,17 @@ class NowPlayingSheet extends StatelessWidget {
                 icon: const Icon(Icons.lyrics_outlined, color: Colors.white70),
                 tooltip: 'Текст песни',
                 onPressed: () => _showLyricsModal(context, track),
+              ),
+              // Sleep Timer
+              IconButton(
+                icon: Icon(
+                  controller.isSleepTimerActive ? Icons.bedtime : Icons.bedtime_outlined,
+                  color: controller.isSleepTimerActive ? providerColor : Colors.white70,
+                ),
+                tooltip: controller.isSleepTimerActive
+                    ? 'Таймер сна активен'
+                    : 'Таймер сна',
+                onPressed: () => _showSleepTimerModal(context, controller),
               ),
               // Equalizer
               IconButton(

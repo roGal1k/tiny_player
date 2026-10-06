@@ -223,6 +223,39 @@ void main() {
       expect(controller.currentIndex, equals(-1));
       expect(controller.currentTrack, isNull);
     });
+
+    test('sleep timer sets duration, calculates remaining and cancels', () {
+      final controller = createTestController(registry: registry);
+
+      expect(controller.isSleepTimerActive, isFalse);
+      expect(controller.sleepTimerRemaining, isNull);
+
+      controller.setSleepTimer(const Duration(minutes: 30));
+      expect(controller.isSleepTimerActive, isTrue);
+      expect(controller.sleepTimerRemaining, isNotNull);
+      expect(controller.sleepTimerRemaining!.inMinutes, inInclusiveRange(29, 30));
+
+      controller.cancelSleepTimer();
+      expect(controller.isSleepTimerActive, isFalse);
+      expect(controller.sleepTimerRemaining, isNull);
+      controller.dispose();
+    });
+
+    test('sleep timer at end of track toggles properly', () {
+      final controller = createTestController(registry: registry);
+
+      expect(controller.sleepAtEndOfTrack, isFalse);
+      expect(controller.isSleepTimerActive, isFalse);
+
+      controller.setSleepAtEndOfTrack(true);
+      expect(controller.sleepAtEndOfTrack, isTrue);
+      expect(controller.isSleepTimerActive, isTrue);
+
+      controller.setSleepAtEndOfTrack(false);
+      expect(controller.sleepAtEndOfTrack, isFalse);
+      expect(controller.isSleepTimerActive, isFalse);
+      controller.dispose();
+    });
   });
 
   group('QueueScreen Widget Tests', () {
