@@ -8,6 +8,7 @@ import '../../data/providers/youtube_provider.dart';
 import '../../data/services/equalizer_service.dart';
 import '../../data/services/settings_service.dart';
 import '../../data/services/audio_cache_service.dart';
+import '../../data/services/core_audio_handler.dart';
 
 enum PlaybackRepeatMode {
   off,
@@ -20,6 +21,7 @@ class AudioPlayerController extends ChangeNotifier {
   final EqualizerService? equalizerService;
   final SettingsService? settingsService;
   final AudioCacheService? cacheService;
+  final CoreAudioHandler? audioHandler;
   final AudioPlayer _player;
 
   Track? _currentTrack;
@@ -30,6 +32,7 @@ class AudioPlayerController extends ChangeNotifier {
   String? _errorMessage;
   double _baseVolume = 1.0;
   bool _isMuted = false;
+  int _consecutiveErrors = 0;
 
   // Queue / Playlist state
   final List<Track> _queue = [];
@@ -46,11 +49,61 @@ class AudioPlayerController extends ChangeNotifier {
     this.equalizerService,
     this.settingsService,
     this.cacheService,
+    this.audioHandler,
     AudioPlayer? player,
   }) : _player = player ?? AudioPlayer() {
+    _initAudioService();
+    _initAudioContext();
     _initStreams();
     _initEqualizerHooks();
     _initSettings();
+  }
+
+  void _initAudioService() {
+    if (audioHandler != null) {
+      audioHandler!.onPlayCallback = resume;
+      audioHandler!.onPauseCallback = pause;
+      audioHandler!.onSkipToNextCallback = playNext;
+      audioHandler!.onSkipToPreviousCallback = playPrevious;
+      audioHandler!.onSeekCallback = seek;
+      audioHandler!.onStopCallback = stop;
+    }
+  }
+
+  void _initAudioContext() {
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        _player.setAudioContext(AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.music,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {
+              AVAudioSessionOptions.defaultToSpeaker,
+              AVAudioSessionOptions.mixWithOthers,
+            },
+          ),
+        ));
+      } catch (e) {
+        debugPrint('[AudioPlayerController] setAudioContext error: $e');
+      }
+    }
+  }
+
+  void _syncAudioServiceState() {
+    audioHandler?.updatePlaybackState(
+      isPlaying: _isPlaying,
+      isBuffering: _isBuffering,
+      position: _position,
+      duration: _duration,
+      hasNext: hasNext,
+      hasPrevious: hasPrevious,
+    );
   }
 
   void _initSettings() {
@@ -106,10 +159,12 @@ class AudioPlayerController extends ChangeNotifier {
       if (state == PlayerState.completed) {
         _isPlaying = false;
         _position = Duration.zero;
+        _syncAudioServiceState();
         _onTrackCompleted();
       }
 
       if (wasBuffering != _isBuffering || wasPlaying != _isPlaying) {
+        _syncAudioServiceState();
         notifyListeners();
       }
     }, onError: (err) {
@@ -117,11 +172,19 @@ class AudioPlayerController extends ChangeNotifier {
       _errorMessage = 'Ошибка аудио: $err';
       _isPlaying = false;
       _isBuffering = false;
+      _syncAudioServiceState();
       notifyListeners();
+
+      _consecutiveErrors++;
+      if (_consecutiveErrors < _queue.length && _queue.isNotEmpty) {
+        debugPrint('[AudioPlayerController] Runtime stream error, skipping to next track...');
+        Future.microtask(() => playNext(isAutoSkipOnError: true));
+      }
     });
 
     _positionSubscription = _player.onPositionChanged.listen((pos) {
       _position = pos;
+      _syncAudioServiceState();
       notifyListeners();
     }, onError: (err) {
       debugPrint('[AudioPlayerController] Position stream error: $err');
@@ -129,6 +192,7 @@ class AudioPlayerController extends ChangeNotifier {
 
     _durationSubscription = _player.onDurationChanged.listen((dur) {
       _duration = dur;
+      _syncAudioServiceState();
       notifyListeners();
     }, onError: (err) {
       debugPrint('[AudioPlayerController] Duration stream error: $err');
@@ -185,6 +249,8 @@ class AudioPlayerController extends ChangeNotifier {
     _position = Duration.zero;
     _duration = track.duration;
     _isBuffering = true;
+    audioHandler?.updateTrack(track);
+    _syncAudioServiceState();
     notifyListeners();
 
     try {
@@ -230,12 +296,27 @@ class AudioPlayerController extends ChangeNotifier {
         }
       }
       await _applyEffectiveVolume();
+      _consecutiveErrors = 0;
       _preloadNextTrackIfNeeded();
     } catch (e) {
-      _errorMessage = e.toString();
+      debugPrint('[AudioPlayerController] Error playing "${track.title}": $e');
+      _errorMessage = 'Не удалось загрузить "${track.title}"';
       _isBuffering = false;
       _isPlaying = false;
+      _syncAudioServiceState();
       notifyListeners();
+
+      _consecutiveErrors++;
+      if (_consecutiveErrors < _queue.length && _queue.isNotEmpty) {
+        debugPrint('[AudioPlayerController] Auto-skipping to next track (attempt $_consecutiveErrors of ${_queue.length})...');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          playNext(isAutoSkipOnError: true);
+        });
+      } else {
+        _errorMessage = 'Не удалось воспроизвести треки ($e)';
+        _consecutiveErrors = 0;
+        notifyListeners();
+      }
     }
   }
 
@@ -269,7 +350,10 @@ class AudioPlayerController extends ChangeNotifier {
     }
   }
 
-  Future<void> playNext() async {
+  Future<void> playNext({bool isAutoSkipOnError = false}) async {
+    if (!isAutoSkipOnError) {
+      _consecutiveErrors = 0;
+    }
     if (_queue.isEmpty) return;
 
     if (_isShuffle && _queue.length > 1) {
@@ -442,6 +526,18 @@ class AudioPlayerController extends ChangeNotifier {
   Future<void> pause() async {
     if (_isPlaying) {
       await _player.pause();
+      _isPlaying = false;
+      _syncAudioServiceState();
+      notifyListeners();
+    }
+  }
+
+  Future<void> resume() async {
+    if (!_isPlaying && _currentTrack != null) {
+      await _player.resume();
+      _isPlaying = true;
+      _syncAudioServiceState();
+      notifyListeners();
     }
   }
 
@@ -449,14 +545,17 @@ class AudioPlayerController extends ChangeNotifier {
     if (_currentTrack == null) return;
 
     if (_isPlaying) {
-      await _player.pause();
+      await pause();
     } else {
-      await _player.resume();
+      await resume();
     }
   }
 
   Future<void> seek(Duration position) async {
     await _player.seek(position);
+    _position = position;
+    _syncAudioServiceState();
+    notifyListeners();
   }
 
   Future<void> stop() async {
@@ -466,6 +565,8 @@ class AudioPlayerController extends ChangeNotifier {
     _duration = Duration.zero;
     _isPlaying = false;
     _isBuffering = false;
+    _consecutiveErrors = 0;
+    _syncAudioServiceState();
     notifyListeners();
   }
 

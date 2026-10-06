@@ -43,6 +43,7 @@ dependencies:
   http: ^1.6.0
   flutter_dotenv: ^6.0.1
   audioplayers: ^6.8.1
+  audio_service: ^0.18.19
   html: ^0.15.7
   youtube_explode_dart: ^3.1.0
   sqflite_common_ffi_web: ^0.4.5+2

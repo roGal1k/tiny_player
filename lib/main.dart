@@ -28,6 +28,7 @@ import 'data/services/equalizer_service.dart';
 import 'data/services/settings_service.dart';
 import 'data/services/audio_cache_service.dart';
 import 'data/services/sync_service.dart';
+import 'data/services/core_audio_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,6 +73,8 @@ void main() async {
   final syncService = SyncService();
   await syncService.init();
 
+  final audioHandler = await CoreAudioHandler.initHandler();
+
   runApp(
     MultiProvider(
       providers: [
@@ -89,6 +92,7 @@ void main() async {
             equalizerService: equalizerService,
             settingsService: settingsService,
             cacheService: audioCacheService,
+            audioHandler: audioHandler,
           ),
         ),
       ],

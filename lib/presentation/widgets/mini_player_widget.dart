@@ -8,6 +8,7 @@ import '../screens/equalizer_screen.dart';
 import '../screens/queue_screen.dart';
 import '../../domain/models/track.dart';
 import '../../data/services/video_launcher_service.dart';
+import 'now_playing_sheet.dart';
 
 class MiniPlayerWidget extends StatelessWidget {
   const MiniPlayerWidget({super.key});
@@ -53,6 +54,7 @@ class MiniPlayerWidget extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width <= 680;
     final currentPos = controller.position;
     final totalDuration = controller.duration.inMilliseconds > 0 
         ? controller.duration 
@@ -82,7 +84,7 @@ class MiniPlayerWidget extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Прогресс-бар сверху мини-плеера
+          // Улучшенный прогресс-бар сверху мини-плеера (увеличенная зона касания и полоса 6px)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onHorizontalDragUpdate: (details) {
@@ -101,13 +103,21 @@ class MiniPlayerWidget extends StatelessWidget {
                 controller.seek(Duration(milliseconds: (ratio * totalDuration.inMilliseconds).toInt()));
               }
             },
-            child: SizedBox(
-              height: 4,
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: Colors.white10,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  _getProviderColor(track.providerId),
+            child: Container(
+              height: 14,
+              alignment: Alignment.center,
+              color: Colors.transparent,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 6,
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _getProviderColor(track.providerId),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -131,9 +141,11 @@ class MiniPlayerWidget extends StatelessWidget {
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-            child: Row(
+          InkWell(
+            onTap: () => NowPlayingSheet.show(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              child: Row(
               children: [
                 // Обложка трека
                 ClipRRect(
@@ -225,205 +237,251 @@ class MiniPlayerWidget extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
 
-                // Кнопка Play / Pause / Buffering
-                if (controller.isBuffering)
-                  const SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Padding(
-                      padding: EdgeInsets.all(10.0),
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                if (isMobile) ...[
+                  // Лаконичные мобильные контролы (без переполнения экрана)
+                  if (controller.isBuffering)
+                    const SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      iconSize: 36,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: Icon(
+                        controller.isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_fill,
+                        color: _getProviderColor(track.providerId),
+                      ),
+                      tooltip: controller.isPlaying ? 'Пауза' : 'Воспроизведение',
+                      onPressed: controller.togglePlayPause,
                     ),
-                  )
-                else
+                  const SizedBox(width: 8),
                   IconButton(
-                    iconSize: 34,
+                    iconSize: 28,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    icon: Icon(
-                      controller.isPlaying
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_fill,
-                      color: _getProviderColor(track.providerId),
-                    ),
-                    onPressed: controller.togglePlayPause,
+                    icon: const Icon(Icons.skip_next, color: Colors.white),
+                    tooltip: 'Следующий трек',
+                    onPressed: controller.playNext,
                   ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    iconSize: 26,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white70),
+                    tooltip: 'Развернуть плеер',
+                    onPressed: () => NowPlayingSheet.show(context),
+                  ),
+                ] else ...[
+                  // Полный набор контролов для десктопа и планшета
+                  if (controller.isBuffering)
+                    const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Padding(
+                        padding: EdgeInsets.all(10.0),
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      iconSize: 34,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: Icon(
+                        controller.isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_fill,
+                        color: _getProviderColor(track.providerId),
+                      ),
+                      onPressed: controller.togglePlayPause,
+                    ),
 
-                const SizedBox(width: 4),
+                  const SizedBox(width: 4),
 
-                // Кнопка просмотра видео (YouTube)
-                if (track.providerId == 'youtube')
+                  // Кнопка просмотра видео (YouTube)
+                  if (track.providerId == 'youtube')
+                    IconButton(
+                      iconSize: 22,
+                      icon: const Icon(Icons.smart_display_outlined, color: Colors.redAccent),
+                      tooltip: 'Смотреть видео / клип',
+                      onPressed: () {
+                        final launcher = VideoLauncherService(controller.registry);
+                        launcher.openVideo(track, audioController: controller, context: context);
+                      },
+                    ),
+
+                  // Кнопка текстов песен (Genius)
                   IconButton(
                     iconSize: 22,
-                    icon: const Icon(Icons.smart_display_outlined, color: Colors.redAccent),
-                    tooltip: 'Смотреть видео / клип',
-                    onPressed: () {
-                      final launcher = VideoLauncherService(controller.registry);
-                      launcher.openVideo(track, audioController: controller, context: context);
-                    },
+                    icon: const Icon(Icons.lyrics_outlined, color: Colors.white70),
+                    tooltip: 'Song lyrics (Genius)',
+                    onPressed: () => _showLyricsModal(context, track),
                   ),
 
-                // Кнопка текстов песен (Genius)
-                IconButton(
-                  iconSize: 22,
-                  icon: const Icon(Icons.lyrics_outlined, color: Colors.white70),
-                  tooltip: 'Song lyrics (Genius)',
-                  onPressed: () => _showLyricsModal(context, track),
-                ),
-
-                // Кнопка Эквалайзера & Тюнера (AIMP Style)
-                Builder(
-                  builder: (ctx) {
-                    final eq = Provider.of<EqualizerService?>(ctx);
-                    final isEqOn = eq?.isEnabled ?? false;
-                    return IconButton(
-                      iconSize: 22,
-                      icon: Icon(
-                        Icons.tune,
-                        color: isEqOn ? Colors.tealAccent : Colors.white70,
-                      ),
-                      tooltip: 'Эквалайзер & Тюнер (AIMP)',
-                      onPressed: () => EqualizerScreen.showAsBottomSheet(context),
-                    );
-                  },
-                ),
-
-                // Кнопка Очереди воспроизведения (Треклист)
-                IconButton(
-                  iconSize: 22,
-                  icon: Icon(
-                    Icons.queue_music,
-                    color: controller.queue.isNotEmpty ? Colors.cyanAccent : Colors.white70,
-                  ),
-                  tooltip: 'Очередь воспроизведения (${controller.queue.length})',
-                  onPressed: () => QueueScreen.showAsBottomSheet(context),
-                ),
-
-                // Регулятор громкости (Desktop: иконка + слайдер; Mobile: иконка -> попап)
-                Builder(
-                  builder: (ctx) {
-                    final isWideScreen = MediaQuery.of(ctx).size.width > 680;
-                    final isMuted = controller.isMuted || controller.volume == 0;
-                    final volIcon = isMuted
-                        ? Icons.volume_off
-                        : (controller.volume < 0.5 ? Icons.volume_down : Icons.volume_up);
-
-                    if (isWideScreen) {
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            iconSize: 22,
-                            icon: Icon(
-                              volIcon,
-                              color: isMuted ? Colors.redAccent : Colors.white70,
-                            ),
-                            tooltip: isMuted ? 'Включить звук' : 'Выключить звук',
-                            onPressed: controller.toggleMute,
-                          ),
-                          SizedBox(
-                            width: 75,
-                            child: SliderTheme(
-                              data: SliderTheme.of(ctx).copyWith(
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                                activeTrackColor: theme.colorScheme.primary,
-                                inactiveTrackColor: Colors.white12,
-                                thumbColor: theme.colorScheme.primary,
-                              ),
-                              child: Slider(
-                                value: controller.volume,
-                                min: 0.0,
-                                max: 1.0,
-                                onChanged: (val) => controller.setVolume(val),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    } else {
+                  // Кнопка Эквалайзера & Тюнера (AIMP Style)
+                  Builder(
+                    builder: (ctx) {
+                      final eq = Provider.of<EqualizerService?>(ctx);
+                      final isEqOn = eq?.isEnabled ?? false;
                       return IconButton(
                         iconSize: 22,
                         icon: Icon(
-                          volIcon,
-                          color: isMuted ? Colors.redAccent : Colors.white70,
+                          Icons.tune,
+                          color: isEqOn ? Colors.tealAccent : Colors.white70,
                         ),
-                        tooltip: 'Громкость (${(controller.volume * 100).toInt()}%)',
-                        onPressed: () => _showVolumePopup(ctx, controller),
+                        tooltip: 'Эквалайзер & Тюнер (AIMP)',
+                        onPressed: () => EqualizerScreen.showAsBottomSheet(context),
                       );
-                    }
-                  },
-                ),
+                    },
+                  ),
 
-                // Кнопка скачивания трека в локальную библиотеку
-                Builder(
-                  builder: (ctx) {
-                    final downloadManager = Provider.of<DownloadManager?>(ctx);
-                    if (downloadManager == null || !track.isDownloadable) {
-                      return const SizedBox.shrink();
-                    }
+                  // Кнопка Очереди воспроизведения (Треклист)
+                  IconButton(
+                    iconSize: 22,
+                    icon: Icon(
+                      Icons.queue_music,
+                      color: controller.queue.isNotEmpty ? Colors.cyanAccent : Colors.white70,
+                    ),
+                    tooltip: 'Очередь воспроизведения (${controller.queue.length})',
+                    onPressed: () => QueueScreen.showAsBottomSheet(context),
+                  ),
 
-                    final taskKey = '${track.providerId}_${track.id}';
-                    final task = downloadManager.getTask(taskKey);
+                  // Регулятор громкости
+                  Builder(
+                    builder: (ctx) {
+                      final isWideScreen = MediaQuery.of(ctx).size.width > 680;
+                      final isMuted = controller.isMuted || controller.volume == 0;
+                      final volIcon = isMuted
+                          ? Icons.volume_off
+                          : (controller.volume < 0.5 ? Icons.volume_down : Icons.volume_up);
 
-                    if (task?.status == DownloadStatus.downloading) {
-                      return SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: Stack(
-                          alignment: Alignment.center,
+                      if (isWideScreen) {
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircularProgressIndicator(
-                              value: task!.progress > 0 ? task.progress : null,
-                              strokeWidth: 2,
+                            IconButton(
+                              iconSize: 22,
+                              icon: Icon(
+                                volIcon,
+                                color: isMuted ? Colors.redAccent : Colors.white70,
+                              ),
+                              tooltip: isMuted ? 'Включить звук' : 'Выключить звук',
+                              onPressed: controller.toggleMute,
                             ),
-                            Text(
-                              '${(task.progress * 100).toInt()}%',
-                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                            SizedBox(
+                              width: 75,
+                              child: SliderTheme(
+                                data: SliderTheme.of(ctx).copyWith(
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                  activeTrackColor: theme.colorScheme.primary,
+                                  inactiveTrackColor: Colors.white12,
+                                  thumbColor: theme.colorScheme.primary,
+                                ),
+                                child: Slider(
+                                  value: controller.volume,
+                                  min: 0.0,
+                                  max: 1.0,
+                                  onChanged: (val) => controller.setVolume(val),
+                                ),
+                              ),
                             ),
                           ],
-                        ),
-                      );
-                    }
+                        );
+                      } else {
+                        return IconButton(
+                          iconSize: 22,
+                          icon: Icon(
+                            volIcon,
+                            color: isMuted ? Colors.redAccent : Colors.white70,
+                          ),
+                          tooltip: 'Громкость (${(controller.volume * 100).toInt()}%)',
+                          onPressed: () => _showVolumePopup(ctx, controller),
+                        );
+                      }
+                    },
+                  ),
 
-                    if (task?.status == DownloadStatus.completed) {
+                  // Кнопка скачивания трека в локальную библиотеку
+                  Builder(
+                    builder: (ctx) {
+                      final downloadManager = Provider.of<DownloadManager?>(ctx);
+                      if (downloadManager == null || !track.isDownloadable) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final taskKey = '${track.providerId}_${track.id}';
+                      final task = downloadManager.getTask(taskKey);
+
+                      if (task?.status == DownloadStatus.downloading) {
+                        return SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                value: task!.progress > 0 ? task.progress : null,
+                                strokeWidth: 2,
+                              ),
+                              Text(
+                                '${(task.progress * 100).toInt()}%',
+                                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (task?.status == DownloadStatus.completed) {
+                        return IconButton(
+                          iconSize: 22,
+                          icon: const Icon(Icons.check_circle, color: Colors.greenAccent),
+                          tooltip: 'Saved to library',
+                          onPressed: () {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(content: Text('Saved to: ${task?.savedFilePath}')),
+                            );
+                          },
+                        );
+                      }
+
                       return IconButton(
                         iconSize: 22,
-                        icon: const Icon(Icons.check_circle, color: Colors.greenAccent),
-                        tooltip: 'Saved to library',
+                        icon: const Icon(Icons.download_rounded, color: Colors.white70),
+                        tooltip: 'Download track to local library',
                         onPressed: () {
+                          downloadManager.downloadTrack(track);
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('Saved to: ${task?.savedFilePath}')),
+                            SnackBar(content: Text('Downloading: ${track.title}')),
                           );
                         },
                       );
-                    }
+                    },
+                  ),
 
-                    return IconButton(
-                      iconSize: 22,
-                      icon: const Icon(Icons.download_rounded, color: Colors.white70),
-                      tooltip: 'Download track to local library',
-                      onPressed: () {
-                        downloadManager.downloadTrack(track);
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('Downloading: ${track.title}')),
-                        );
-                      },
-                    );
-                  },
-                ),
-
-                // Кнопка закрытия
-                IconButton(
-                  iconSize: 20,
-                  icon: const Icon(Icons.close, color: Colors.white54),
-                  tooltip: 'Close player',
-                  onPressed: controller.stop,
-                ),
+                  // Кнопка закрытия
+                  IconButton(
+                    iconSize: 20,
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    tooltip: 'Close player',
+                    onPressed: controller.stop,
+                  ),
+                ],
               ],
             ),
           ),
+        ),
         ],
       ),
     );
