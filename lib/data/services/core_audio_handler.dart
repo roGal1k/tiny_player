@@ -32,8 +32,8 @@ class CoreAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   static Future<CoreAudioHandler?> initHandler() async {
-    // AudioService is primarily intended for mobile (Android/iOS) and Web
-    if (!kIsWeb && !(Platform.isAndroid || Platform.isIOS)) {
+    // AudioService is only for mobile platforms (Android/iOS)
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
       return null;
     }
 

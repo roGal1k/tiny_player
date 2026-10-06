@@ -32,7 +32,11 @@ import 'data/services/core_audio_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('[main] dotenv.load exception: $e');
+  }
   
   final settingsService = SettingsService();
   await settingsService.loadSettings();
