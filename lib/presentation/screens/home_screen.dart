@@ -75,7 +75,13 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final libraryService = context.watch<LocalLibraryService>();
-    final audioController = context.watch<AudioPlayerController>();
+    final audioController = context.read<AudioPlayerController>();
+    final currentTrackId = context.select<AudioPlayerController, String?>(
+      (c) => c.currentTrack?.id,
+    );
+    final isPlaying = context.select<AudioPlayerController, bool>(
+      (c) => c.isPlaying,
+    );
     final tracks = libraryService.tracks;
 
     return Scaffold(
@@ -143,7 +149,7 @@ class HomeScreen extends StatelessWidget {
                   separatorBuilder: (context, index) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final track = tracks[index];
-                    final isCurrent = audioController.currentTrack?.id == track.id;
+                    final isCurrent = currentTrackId == track.id;
 
                     return ListTile(
                       selected: isCurrent,
@@ -156,7 +162,7 @@ class HomeScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Icon(
-                          isCurrent && audioController.isPlaying
+                          isCurrent && isPlaying
                               ? Icons.graphic_eq
                               : Icons.music_note,
                           color: Colors.deepPurpleAccent,
@@ -185,7 +191,7 @@ class HomeScreen extends StatelessWidget {
                         children: [
                           IconButton(
                             icon: Icon(
-                              isCurrent && audioController.isPlaying
+                              isCurrent && isPlaying
                                   ? Icons.pause
                                   : Icons.play_arrow,
                               color: isCurrent ? Colors.deepPurpleAccent : null,

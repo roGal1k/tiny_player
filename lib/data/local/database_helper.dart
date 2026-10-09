@@ -108,6 +108,12 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 ''');
+
+    // Performance indexes for fast joins, searches, and provider filtering
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tracks_provider ON tracks(provider_id);');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(title);');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_library_added ON library(added_at DESC);');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cached_tracks ON cached_tracks(track_id);');
   }
 
   Future _createDB(Database db, int version) async {

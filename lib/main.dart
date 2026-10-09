@@ -39,7 +39,22 @@ void main() async {
   }
   
   final settingsService = SettingsService();
-  await settingsService.loadSettings();
+  final audioCacheService = AudioCacheService();
+  final localLibraryService = LocalLibraryService();
+  final equalizerService = EqualizerService();
+  final syncService = SyncService();
+
+  // Concurrently initialize independent services to minimize cold startup time
+  final initResults = await Future.wait([
+    settingsService.loadSettings(),
+    audioCacheService.init(),
+    localLibraryService.loadLibrary(),
+    equalizerService.init(),
+    syncService.init(),
+    CoreAudioHandler.initHandler(),
+  ]);
+
+  final audioHandler = initResults[5] as CoreAudioHandler?;
 
   final registry = ProviderRegistry();
   registry.registerProvider(LocalProvider());
@@ -57,11 +72,6 @@ void main() async {
   registry.registerProvider(VkProvider(accessToken: dotenv.env['VK_TOKEN']));
   registry.syncDisabledProviders(settingsService.disabledProviders);
 
-  final audioCacheService = AudioCacheService();
-  await audioCacheService.init();
-
-  final localLibraryService = LocalLibraryService();
-  await localLibraryService.loadLibrary();
   final downloadManager = DownloadManager(
     registry: registry,
     libraryService: localLibraryService,
@@ -71,13 +81,6 @@ void main() async {
     clientId: dotenv.env['GENIUS_CLIENT_ID'],
     clientSecret: dotenv.env['GENIUS_CLIENT_SECRET'],
   );
-  final equalizerService = EqualizerService();
-  await equalizerService.init();
-
-  final syncService = SyncService();
-  await syncService.init();
-
-  final audioHandler = await CoreAudioHandler.initHandler();
 
   runApp(
     MultiProvider(

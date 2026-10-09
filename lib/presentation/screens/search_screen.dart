@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/providers/provider_registry.dart';
@@ -25,6 +26,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _debounceTimer;
   
   @override
   bool get wantKeepAlive => true;
@@ -259,6 +261,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -356,7 +359,19 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final audioController = context.watch<AudioPlayerController>();
+    final audioController = context.read<AudioPlayerController>();
+    final currentTrackId = context.select<AudioPlayerController, String?>(
+      (c) => c.currentTrack?.id,
+    );
+    final currentProviderId = context.select<AudioPlayerController, String?>(
+      (c) => c.currentTrack?.providerId,
+    );
+    final isPlaying = context.select<AudioPlayerController, bool>(
+      (c) => c.isPlaying,
+    );
+    final isBuffering = context.select<AudioPlayerController, bool>(
+      (c) => c.isBuffering,
+    );
     final downloadManager = context.watch<DownloadManager>();
     final cacheService = context.watch<AudioCacheService?>();
 
@@ -371,6 +386,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 20),
                     onPressed: () {
+                      _debounceTimer?.cancel();
                       _searchController.clear();
                       setState(() {});
                       _loadCategory('Топ Сегодня');
@@ -378,21 +394,54 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                   )
                 : null,
           ),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) => _performSearch(),
+          onChanged: (text) {
+            setState(() {});
+            _debounceTimer?.cancel();
+            final q = text.trim();
+            if (q.length >= 2) {
+              _debounceTimer = Timer(const Duration(milliseconds: 450), () {
+                if (mounted && _searchController.text.trim() == q) {
+                  _performSearch();
+                }
+              });
+            }
+          },
+          onSubmitted: (_) {
+            _debounceTimer?.cancel();
+            _performSearch();
+          },
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: _performSearch,
+            onPressed: () {
+              _debounceTimer?.cancel();
+              _performSearch();
+            },
           ),
         ],
       ),
-      body: _buildBody(audioController, downloadManager, cacheService),
+      body: _buildBody(
+        audioController,
+        downloadManager,
+        cacheService,
+        currentTrackId: currentTrackId,
+        currentProviderId: currentProviderId,
+        isPlaying: isPlaying,
+        isBuffering: isBuffering,
+      ),
     );
   }
 
-  Widget _buildBody(AudioPlayerController audioController, DownloadManager downloadManager, AudioCacheService? cacheService) {
+  Widget _buildBody(
+    AudioPlayerController audioController,
+    DownloadManager downloadManager,
+    AudioCacheService? cacheService, {
+    required String? currentTrackId,
+    required String? currentProviderId,
+    required bool isPlaying,
+    required bool isBuffering,
+  }) {
     return Column(
       children: [
         if (_isOfflineMode) _buildOfflineBanner(),
@@ -403,7 +452,15 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
           _buildBatchActionBar(downloadManager),
         ],
         Expanded(
-          child: _buildResultsList(audioController, downloadManager, cacheService),
+          child: _buildResultsList(
+            audioController,
+            downloadManager,
+            cacheService,
+            currentTrackId: currentTrackId,
+            currentProviderId: currentProviderId,
+            isPlaying: isPlaying,
+            isBuffering: isBuffering,
+          ),
         ),
       ],
     );
@@ -747,7 +804,15 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
     );
   }
 
-  Widget _buildResultsList(AudioPlayerController audioController, DownloadManager downloadManager, AudioCacheService? cacheService) {
+  Widget _buildResultsList(
+    AudioPlayerController audioController,
+    DownloadManager downloadManager,
+    AudioCacheService? cacheService, {
+    required String? currentTrackId,
+    required String? currentProviderId,
+    required bool isPlaying,
+    required bool isBuffering,
+  }) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -889,8 +954,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
       itemCount: tracksToDisplay.length,
       itemBuilder: (context, index) {
         final track = tracksToDisplay[index];
-        final isCurrent = audioController.currentTrack?.id == track.id &&
-            audioController.currentTrack?.providerId == track.providerId;
+        final isCurrent = currentTrackId == track.id && currentProviderId == track.providerId;
         final providerColor = _getProviderColor(track.providerId);
         final isTrackCached = cacheService?.isCached(track) ?? false;
 
@@ -927,7 +991,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                         child: const Icon(Icons.music_note),
                       ),
               ),
-              if (isCurrent && audioController.isPlaying)
+              if (isCurrent && isPlaying)
                 Container(
                   width: 50,
                   height: 50,
@@ -1017,14 +1081,14 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
                 ),
               if (track.isStreamable)
                 IconButton(
-                  icon: isCurrent && audioController.isBuffering
+                  icon: isCurrent && isBuffering
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Icon(
-                          isCurrent && audioController.isPlaying
+                          isCurrent && isPlaying
                               ? Icons.pause
                               : Icons.play_arrow,
                           color: isCurrent ? providerColor : null,

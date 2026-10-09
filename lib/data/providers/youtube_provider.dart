@@ -119,6 +119,9 @@ class YouTubeProvider implements MusicProvider {
       Directory(path.join(Directory.systemTemp.path, 'core_player_yt_cache'));
 
   static final Map<String, Future<String>> _inProgress = {};
+  static final Map<String, String> _streamUrlCache = {};
+  static final Map<String, DateTime> _streamUrlTimestamps = {};
+  static const Duration _streamCacheTtl = Duration(minutes: 30);
   static bool? _ffmpegAvailable;
 
   static Future<bool> isFfmpegAvailable() async {
@@ -137,12 +140,21 @@ class YouTubeProvider implements MusicProvider {
 
   @override
   Future<String> getStreamUrl(Track track) async {
-    // 1. Check if extraction is already in flight
+    // 1. Check in-memory stream URL cache (0 ms response for repeat / preloaded tracks)
+    final cachedUrl = _streamUrlCache[track.id];
+    final cachedTime = _streamUrlTimestamps[track.id];
+    if (cachedUrl != null &&
+        cachedTime != null &&
+        DateTime.now().difference(cachedTime) < _streamCacheTtl) {
+      return cachedUrl;
+    }
+
+    // 2. Check if extraction is already in flight
     if (_inProgress.containsKey(track.id)) {
       return _inProgress[track.id]!;
     }
 
-    // 2. Check if clean audio is already cached
+    // 3. Check if clean audio is already cached on disk
     final cached = _cacheFileFor(track.id);
     if (await cached.exists()) {
       final length = await cached.length();
@@ -155,6 +167,8 @@ class YouTubeProvider implements MusicProvider {
     _inProgress[track.id] = future;
     try {
       final result = await future;
+      _streamUrlCache[track.id] = result;
+      _streamUrlTimestamps[track.id] = DateTime.now();
       return result;
     } finally {
       _inProgress.remove(track.id);

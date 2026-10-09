@@ -243,10 +243,15 @@ class AudioPlayerController extends ChangeNotifier {
       }
     });
 
+    DateTime lastPositionNotify = DateTime.fromMillisecondsSinceEpoch(0);
     _positionSubscription = _player.onPositionChanged.listen((pos) {
       _position = pos;
       _syncAudioServiceState();
-      notifyListeners();
+      final now = DateTime.now();
+      if (now.difference(lastPositionNotify).inMilliseconds >= 250) {
+        lastPositionNotify = now;
+        notifyListeners();
+      }
     }, onError: (err) {
       debugPrint('[AudioPlayerController] Position stream error: $err');
     });
@@ -344,9 +349,15 @@ class AudioPlayerController extends ChangeNotifier {
 
         if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
           await _player.play(UrlSource(effectiveUrl));
-          // Transparently cache streaming audio in background if enabled
+          // Transparently cache streaming audio in background after initial playback buffer is established (3.5s delay)
+          // Avoids network bandwidth contention during critical initial track start
           if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
-            cacheService!.cacheTrackInBackground(track, streamUrl);
+            final trackId = track.id;
+            Future.delayed(const Duration(milliseconds: 3500), () {
+              if (_currentTrack?.id == trackId && _isPlaying) {
+                cacheService!.cacheTrackInBackground(track, streamUrl);
+              }
+            });
           }
         } else {
           await _player.play(DeviceFileSource(effectiveUrl));
