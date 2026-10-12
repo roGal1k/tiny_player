@@ -92,7 +92,7 @@ class HitmoProvider implements MusicProvider {
       final response = await _client.get(
         requestUri,
         headers: _headers,
-      ).timeout(const Duration(milliseconds: 2400));
+      ).timeout(const Duration(milliseconds: 3200));
 
       if (response.statusCode == 200) {
         final parsed = parseHtmlTracks(response.body, baseDomain: '${uri.scheme}://${uri.host}');

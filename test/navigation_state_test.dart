@@ -99,7 +99,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Downloads screen is now visible
-    expect(find.text('Downloads'), findsWidgets);
+    expect(find.text('Загрузки'), findsWidgets);
 
     // Switch BACK to Search tab (index 1)
     await tester.tap(find.byIcon(Icons.search_outlined).first);

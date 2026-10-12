@@ -37,6 +37,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Home'), findsWidgets);
+    expect(find.text('Главная'), findsWidgets);
+    expect(find.text('Артисты'), findsWidgets);
   });
 }
