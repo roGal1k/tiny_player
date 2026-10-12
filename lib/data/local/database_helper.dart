@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../domain/models/track.dart';
+import '../../domain/models/artist.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -109,11 +110,20 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 ''');
 
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS favorite_artists (
+  name TEXT PRIMARY KEY,
+  artwork_url TEXT,
+  added_at TEXT NOT NULL
+);
+''');
+
     // Performance indexes for fast joins, searches, and provider filtering
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tracks_provider ON tracks(provider_id);');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(title);');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_library_added ON library(added_at DESC);');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_cached_tracks ON cached_tracks(track_id);');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_favorite_artists_added ON favorite_artists(added_at DESC);');
   }
 
   Future _createDB(Database db, int version) async {
@@ -297,6 +307,45 @@ CREATE TABLE IF NOT EXISTS settings (
       columns: ['track_id'],
       where: 'track_id = ?',
       whereArgs: [trackId],
+      limit: 1,
+    );
+    return maps.isNotEmpty;
+  }
+
+  // --- Favorite Artists ---
+  Future<void> addFavoriteArtist(Artist artist) async {
+    final db = await database;
+    await db.insert(
+      'favorite_artists',
+      artist.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> removeFavoriteArtist(String name) async {
+    final db = await database;
+    await db.delete(
+      'favorite_artists',
+      where: 'LOWER(name) = ?',
+      whereArgs: [name.trim().toLowerCase()],
+    );
+  }
+
+  Future<List<Artist>> getFavoriteArtists() async {
+    final db = await database;
+    final maps = await db.query(
+      'favorite_artists',
+      orderBy: 'added_at DESC',
+    );
+    return maps.map((m) => Artist.fromMap(m)).toList();
+  }
+
+  Future<bool> isFavoriteArtist(String name) async {
+    final db = await database;
+    final maps = await db.query(
+      'favorite_artists',
+      where: 'LOWER(name) = ?',
+      whereArgs: [name.trim().toLowerCase()],
       limit: 1,
     );
     return maps.isNotEmpty;

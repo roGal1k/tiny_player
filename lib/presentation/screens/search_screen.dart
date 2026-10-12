@@ -8,6 +8,8 @@ import '../../data/services/download_manager.dart';
 import '../../data/services/video_launcher_service.dart';
 import '../../data/services/audio_cache_service.dart';
 import '../../data/local/database_helper.dart';
+import '../../domain/models/artist.dart';
+import 'artist_detail_screen.dart';
 
 enum SearchSortMode {
   defaultMix,
@@ -1056,10 +1058,28 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
               ],
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  track.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ArtistDetailScreen(
+                          artist: Artist(
+                            name: track.artist,
+                            artworkUrl: track.artworkUrl,
+                            addedAt: DateTime.now(),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    track.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                  ),
                 ),
               ),
             ],

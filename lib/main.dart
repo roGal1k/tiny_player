@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/search_screen.dart';
+import 'presentation/screens/artists_screen.dart';
 import 'presentation/screens/downloads_screen.dart';
 import 'presentation/screens/cache_screen.dart';
 import 'presentation/screens/settings_screen.dart';
@@ -27,6 +28,7 @@ import 'data/services/genius_lyrics_service.dart';
 import 'data/services/equalizer_service.dart';
 import 'data/services/settings_service.dart';
 import 'data/services/audio_cache_service.dart';
+import 'data/services/artist_service.dart';
 import 'data/services/sync_service.dart';
 import 'data/services/core_audio_handler.dart';
 
@@ -76,6 +78,10 @@ void main() async {
     registry: registry,
     libraryService: localLibraryService,
   );
+  final artistService = ArtistService(
+    registry: registry,
+    libraryService: localLibraryService,
+  );
   final lyricsService = GeniusLyricsService(
     accessToken: dotenv.env['GENIUS_ACCESS_TOKEN'],
     clientId: dotenv.env['GENIUS_CLIENT_ID'],
@@ -90,6 +96,7 @@ void main() async {
         ChangeNotifierProvider<SettingsService>.value(value: settingsService),
         ChangeNotifierProvider<AudioCacheService>.value(value: audioCacheService),
         ChangeNotifierProvider<LocalLibraryService>.value(value: localLibraryService),
+        ChangeNotifierProvider<ArtistService>.value(value: artistService),
         ChangeNotifierProvider<DownloadManager>.value(value: downloadManager),
         ChangeNotifierProvider<EqualizerService>.value(value: equalizerService),
         ChangeNotifierProvider<SyncService>.value(value: syncService),
@@ -137,6 +144,7 @@ class _MainLayoutState extends State<MainLayout> {
   final List<Widget> _screens = const [
     HomeScreen(),
     SearchScreen(),
+    ArtistsScreen(),
     CacheScreen(),
     DownloadsScreen(),
     SettingsScreen(),
@@ -171,6 +179,11 @@ class _MainLayoutState extends State<MainLayout> {
                   icon: Icon(Icons.search_outlined),
                   selectedIcon: Icon(Icons.search),
                   label: Text('Search'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.mic_none),
+                  selectedIcon: Icon(Icons.mic),
+                  label: Text('Artists'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.offline_pin_outlined),
@@ -228,6 +241,7 @@ class _MainLayoutState extends State<MainLayout> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+          BottomNavigationBarItem(icon: Icon(Icons.mic), label: 'Artists'),
           BottomNavigationBarItem(icon: Icon(Icons.offline_pin), label: 'Cache'),
           BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Downloads'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),

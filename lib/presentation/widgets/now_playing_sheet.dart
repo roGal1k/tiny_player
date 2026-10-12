@@ -8,6 +8,9 @@ import '../screens/equalizer_screen.dart';
 import '../screens/queue_screen.dart';
 import '../../data/services/genius_lyrics_service.dart';
 import '../../data/services/local_library_service.dart';
+import '../../data/services/artist_service.dart';
+import '../../domain/models/artist.dart';
+import '../screens/artist_detail_screen.dart';
 import 'audio_visualizer_widget.dart';
 
 class NowPlayingSheet extends StatelessWidget {
@@ -431,17 +434,78 @@ class NowPlayingSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ArtistDetailScreen(
+                              artist: Artist(
+                                name: track.artist,
+                                artworkUrl: track.artworkUrl,
+                                addedAt: DateTime.now(),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              track.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right, size: 16, color: Colors.white38),
+                        ],
                       ),
                     ),
                   ],
                 ),
+              ),
+              Builder(
+                builder: (ctx) {
+                  final artistService = Provider.of<ArtistService?>(ctx);
+                  if (artistService == null) return const SizedBox.shrink();
+                  final isArtistFav = artistService.isFavorite(track.artist);
+                  return IconButton(
+                    icon: Icon(
+                      isArtistFav ? Icons.person : Icons.person_outline,
+                      color: isArtistFav ? Colors.deepPurpleAccent : Colors.white60,
+                      size: 24,
+                    ),
+                    tooltip: isArtistFav
+                        ? 'Исполнитель в избранном'
+                        : 'Добавить исполнителя в избранное',
+                    onPressed: () async {
+                      final added = await artistService.toggleFavoriteByName(
+                        track.artist,
+                        artworkUrl: track.artworkUrl,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              added
+                                  ? 'Исполнитель ${track.artist} добавлен в избранное ❤️'
+                                  : 'Исполнитель ${track.artist} удалён из избранного',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                },
               ),
               Builder(
                 builder: (ctx) {
