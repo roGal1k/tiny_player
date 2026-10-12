@@ -347,22 +347,34 @@ class AudioPlayerController extends ChangeNotifier {
         final streamUrl = await provider.getStreamUrl(track);
         final effectiveUrl = WebProxyHelper.proxyStreamUrl(streamUrl);
 
-        if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
-          await _player.play(UrlSource(effectiveUrl));
-          // Transparently cache streaming audio in background after initial playback buffer is established (3.5s delay)
-          // Avoids network bandwidth contention during critical initial track start
-          if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
-            final trackId = track.id;
-            Future.delayed(const Duration(milliseconds: 3500), () {
-              if (_currentTrack?.id == trackId && _isPlaying) {
-                cacheService!.cacheTrackInBackground(track, streamUrl);
-              }
-            });
+        try {
+          if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
+            await _player.play(UrlSource(effectiveUrl));
+            // Transparently cache streaming audio in background after initial playback buffer is established (3.5s delay)
+            // Avoids network bandwidth contention during critical initial track start
+            if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
+              final trackId = track.id;
+              Future.delayed(const Duration(milliseconds: 3500), () {
+                if (_currentTrack?.id == trackId && _isPlaying) {
+                  cacheService!.cacheTrackInBackground(track, streamUrl);
+                }
+              });
+            }
+          } else {
+            await _player.play(DeviceFileSource(effectiveUrl));
+            if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
+              cacheService!.registerExistingLocalFile(track, effectiveUrl);
+            }
           }
-        } else {
-          await _player.play(DeviceFileSource(effectiveUrl));
-          if (!kIsWeb && settingsService?.autoCacheAudio != false && cacheService != null) {
-            cacheService!.registerExistingLocalFile(track, effectiveUrl);
+        } catch (playErr) {
+          // If direct playback failed on mobile/desktop (e.g. strict firewall or regional ISP block),
+          // retry once via the server proxy stream
+          if (!kIsWeb && (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://'))) {
+            final fallbackProxyUrl = WebProxyHelper.forceProxyStreamUrl(streamUrl);
+            debugPrint('[AudioPlayerController] Direct playback failed ($playErr). Retrying via proxy: $fallbackProxyUrl');
+            await _player.play(UrlSource(fallbackProxyUrl));
+          } else {
+            rethrow;
           }
         }
       }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
+import 'package:flutter/foundation.dart';
 import '../../domain/models/track.dart';
 import '../../domain/providers/music_provider.dart';
 import '../services/web_proxy_helper.dart';
@@ -201,14 +202,83 @@ class HitmoProvider implements MusicProvider {
   @override
   Future<Track?> getTrack(String id) async => null;
 
+  static final Map<String, String> _resolvedStreamCache = {};
+  static final Map<String, DateTime> _resolvedStreamTimestamps = {};
+  static const Duration _streamCacheTtl = Duration(minutes: 30);
+
   @override
   Future<String> getStreamUrl(Track track) async {
     if (track.sourceUrl.isEmpty) {
       throw Exception('No stream URL available for Hitmo track');
     }
-    // Return direct stream URL immediately with 0ms delay.
-    // Native audio engines (ExoPlayer, Web Audio, GStreamer) and proxy follow HTTP 302 redirects automatically.
-    return track.sourceUrl;
+
+    // 1. Check in-memory stream cache
+    final cachedUrl = _resolvedStreamCache[track.id];
+    final cachedTime = _resolvedStreamTimestamps[track.id];
+    if (cachedUrl != null &&
+        cachedTime != null &&
+        DateTime.now().difference(cachedTime) < _streamCacheTtl) {
+      return cachedUrl;
+    }
+
+    final initialUrl = track.sourceUrl;
+
+    // 2. On Web, return direct or proxy URL immediately (WebProxyHelper routes via server proxy)
+    if (kIsWeb) {
+      return initialUrl;
+    }
+
+    // 3. On Mobile (Android/iOS) and Desktop (Linux/Windows/macOS):
+    // ru.hitmoz.org returns 403 Forbidden to native audio engines (ExoPlayer) because
+    // ExoPlayer does not send browser bot-bypass headers (User-Agent, X-Forwarded-For).
+    // Resolving the 302 redirect via Dart HTTP client with _headers extracts the direct CDN
+    // link (e.g. cdn4.deliciousoranges.com) which has NO bot protection and streams natively.
+    final candidateUrls = <String>[
+      initialUrl,
+      // Fallback mirrors in case primary mirror is slow or blocked
+      ..._fallbackMirrors.map((mirror) {
+        final uri = Uri.parse(initialUrl);
+        return Uri.parse(mirror).replace(path: uri.path, query: uri.query).toString();
+      }),
+    ];
+
+    for (final candidate in candidateUrls.toSet()) {
+      try {
+        final resolved = await _resolveRedirectUrl(candidate);
+        if (resolved != null && resolved.isNotEmpty) {
+          _resolvedStreamCache[track.id] = resolved;
+          _resolvedStreamTimestamps[track.id] = DateTime.now();
+          return resolved;
+        }
+      } catch (e) {
+        _logSearch('Failed to resolve stream candidate $candidate: $e');
+      }
+    }
+
+    // 4. If all direct resolutions failed, return initialUrl so player can attempt fallback
+    return initialUrl;
+  }
+
+  Future<String?> _resolveRedirectUrl(String url) async {
+    try {
+      final req = http.Request('GET', Uri.parse(url))
+        ..followRedirects = false
+        ..headers.addAll(_headers);
+
+      final streamedResp = await _client.send(req).timeout(const Duration(milliseconds: 2500));
+      if (streamedResp.statusCode == 302 ||
+          streamedResp.statusCode == 301 ||
+          streamedResp.statusCode == 307 ||
+          streamedResp.statusCode == 308) {
+        final loc = streamedResp.headers['location'];
+        if (loc != null && loc.isNotEmpty) {
+          return loc.startsWith('http') ? loc : Uri.parse(url).resolve(loc).toString();
+        }
+      } else if (streamedResp.statusCode == 200) {
+        return url;
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override

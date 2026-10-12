@@ -33,4 +33,26 @@ void main() {
       }
     }
   });
+
+  test('HitmoProvider getStreamUrl resolves 302 redirect to direct CDN stream', () async {
+    final provider = HitmoProvider();
+    final tracks = await provider.search('queen');
+    expect(tracks.isNotEmpty, isTrue);
+
+    final firstTrack = tracks.first;
+    expect(firstTrack.sourceUrl, isNotEmpty);
+
+    final streamUrl = await provider.getStreamUrl(firstTrack);
+    print('Resolved stream URL: $streamUrl');
+    expect(streamUrl.startsWith('http'), isTrue);
+    // Should resolve redirect to CDN or valid audio stream
+    expect(streamUrl.contains('/get/music/') || streamUrl.contains('deliciousoranges') || streamUrl.contains('cdn'), isTrue);
+
+    // Repeat call should hit instant memory cache
+    final sw = Stopwatch()..start();
+    final cachedUrl = await provider.getStreamUrl(firstTrack);
+    sw.stop();
+    expect(cachedUrl, equals(streamUrl));
+    expect(sw.elapsedMilliseconds, lessThan(10));
+  });
 }

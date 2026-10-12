@@ -24,6 +24,13 @@ class WebProxyHelper {
     return '$webOrigin/api/proxy/stream?url=${Uri.encodeComponent(url)}';
   }
 
+  /// Explicitly routes an audio stream URL through the server proxy regardless of platform
+  static String forceProxyStreamUrl(String url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return url;
+    if (url.contains('/api/proxy/stream')) return url;
+    return '$webOrigin/api/proxy/stream?url=${Uri.encodeComponent(url)}';
+  }
+
   /// Transforms an external HTTP request URL into a CORS-enabled proxy URL when running on Web
   static String proxyHttpUrl(String url) {
     if (!kIsWeb) return url;
