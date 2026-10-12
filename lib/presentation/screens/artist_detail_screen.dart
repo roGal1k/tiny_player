@@ -24,6 +24,7 @@ class ArtistDetailScreen extends StatefulWidget {
 class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   late Future<List<Track>> _tracksFuture;
   late Artist _currentArtist;
+  String _selectedProvider = 'all';
 
   @override
   void initState() {
@@ -47,6 +48,33 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     return '$minutes:$seconds';
   }
 
+  String _getProviderName(String providerId) {
+    switch (providerId.toLowerCase()) {
+      case 'hitmo':
+        return 'Hitmo';
+      case 'youtube':
+        return 'YouTube';
+      case 'audius':
+        return 'Audius';
+      case 'deezer':
+        return 'Deezer';
+      case 'soundcloud':
+        return 'SoundCloud';
+      case 'jamendo':
+        return 'Jamendo';
+      case 'internet_archive':
+        return 'Archive';
+      case 'vk':
+        return 'VK';
+      case 'freesound':
+        return 'Freesound';
+      case 'local':
+        return 'Локальные';
+      default:
+        return providerId.toUpperCase();
+    }
+  }
+
   Color _getProviderColor(String providerId) {
     switch (providerId.toLowerCase()) {
       case 'youtube':
@@ -59,11 +87,75 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
         return Colors.orangeAccent;
       case 'audius':
         return const Color(0xFFCC0FE0);
+      case 'jamendo':
+        return Colors.redAccent;
+      case 'internet_archive':
+        return Colors.blueAccent;
+      case 'vk':
+        return Colors.lightBlueAccent;
+      case 'freesound':
+        return Colors.tealAccent;
       case 'local':
         return Colors.tealAccent;
       default:
         return Colors.deepPurpleAccent;
     }
+  }
+
+  Widget _buildProviderFilterChips(List<Track> allTracks) {
+    final counts = <String, int>{'all': allTracks.length};
+    for (final track in allTracks) {
+      final pid = track.providerId.toLowerCase();
+      counts[pid] = (counts[pid] ?? 0) + 1;
+    }
+
+    if (counts.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    final providers = counts.keys.toList();
+
+    return Container(
+      height: 38,
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: providers.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final pid = providers[index];
+          final count = counts[pid] ?? 0;
+          final isSelected = _selectedProvider == pid;
+          final color = pid == 'all' ? Colors.white70 : _getProviderColor(pid);
+          final label = pid == 'all' ? 'Все ($count)' : '${_getProviderName(pid)} ($count)';
+
+          return FilterChip(
+            label: Text(label),
+            selected: isSelected,
+            onSelected: (selected) {
+              setState(() {
+                _selectedProvider = selected ? pid : 'all';
+              });
+            },
+            selectedColor: color.withValues(alpha: 0.25),
+            checkmarkColor: color,
+            labelStyle: TextStyle(
+              color: isSelected ? color : Colors.white70,
+              fontSize: 11.5,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+            backgroundColor: Colors.white.withValues(alpha: 0.04),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: isSelected ? color : Colors.white12,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -95,7 +187,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                             Image.network(
                               _currentArtist.artworkUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 color: theme.colorScheme.surfaceContainerHighest,
                               ),
                             )
@@ -235,9 +327,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     );
                   }
 
-                  final tracks = snapshot.data ?? [];
+                  final allTracks = snapshot.data ?? [];
 
-                  if (tracks.isEmpty) {
+                  if (allTracks.isEmpty) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24.0),
@@ -272,62 +364,155 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     );
                   }
 
+                  final filteredTracks = _selectedProvider == 'all'
+                      ? allTracks
+                      : allTracks
+                          .where((t) => t.providerId.toLowerCase() == _selectedProvider.toLowerCase())
+                          .toList();
+
+                  final downloadableTracks = filteredTracks.where((t) => t.isDownloadable).toList();
+
                   return CustomScrollView(
                     slivers: [
-                      // Action buttons: "Play All" and "Shuffle"
+                      // Выбор источника треков (как в поиске)
+                      SliverToBoxAdapter(
+                        child: _buildProviderFilterChips(allTracks),
+                      ),
+
+                      // Информационная панель и кнопки управления
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          child: Row(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: theme.colorScheme.primary,
-                                    foregroundColor: theme.colorScheme.onPrimary,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _selectedProvider == 'all'
+                                          ? 'Все источники (${allTracks.length} треков)'
+                                          : 'Источник: ${_getProviderName(_selectedProvider)} (${filteredTracks.length} из ${allTracks.length})',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white.withValues(alpha: 0.7),
+                                      ),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: Text(
-                                    'Слушать всё (${tracks.length})',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  onPressed: () {
-                                    audioController.playTrack(tracks.first, playlist: tracks);
-                                  },
-                                ),
+                                  if (downloadableTracks.isNotEmpty && downloadManager != null)
+                                    TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      ),
+                                      icon: const Icon(Icons.download, size: 16),
+                                      label: Text('Скачать все (${downloadableTracks.length})'),
+                                      onPressed: () async {
+                                        final count = await downloadManager.downloadAll(downloadableTracks);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Добавлено в загрузки: $count треков'),
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                    horizontal: 16,
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: theme.colorScheme.primary,
+                                        foregroundColor: theme.colorScheme.onPrimary,
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: Text(
+                                        filteredTracks.isEmpty
+                                            ? 'Слушать'
+                                            : 'Слушать всё (${filteredTracks.length})',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      onPressed: filteredTracks.isEmpty
+                                          ? null
+                                          : () {
+                                              audioController.playTrack(
+                                                filteredTracks.first,
+                                                playlist: filteredTracks,
+                                              );
+                                            },
+                                    ),
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                  const SizedBox(width: 12),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                        horizontal: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.shuffle),
+                                    label: const Text('Перемешать'),
+                                    onPressed: filteredTracks.isEmpty
+                                        ? null
+                                        : () {
+                                            final shuffled = List<Track>.from(filteredTracks)..shuffle();
+                                            audioController.playTrack(
+                                              shuffled.first,
+                                              playlist: shuffled,
+                                            );
+                                          },
                                   ),
-                                ),
-                                icon: const Icon(Icons.shuffle),
-                                label: const Text('Перемешать'),
-                                onPressed: () {
-                                  final shuffled = List<Track>.from(tracks)..shuffle();
-                                  audioController.playTrack(shuffled.first, playlist: shuffled);
-                                },
+                                ],
                               ),
                             ],
                           ),
                         ),
                       ),
 
-                      // Tracks List
+                      // Пустое состояние для выбранного источника
+                      if (filteredTracks.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32.0),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.music_off, size: 44, color: Colors.white38),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Нет треков от ${_getProviderName(_selectedProvider)}',
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton(
+                                    onPressed: () => setState(() => _selectedProvider = 'all'),
+                                    child: const Text('Показать все источники'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        // Tracks List
                       SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            final track = tracks[index];
+                            final track = filteredTracks[index];
                             final isCurrent = audioController.currentTrack?.id == track.id;
                             final isPlaying = isCurrent && audioController.isPlaying;
                             final isBuffering = isCurrent && audioController.isBuffering;
@@ -354,7 +539,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                           width: 44,
                                           height: 44,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
+                                          errorBuilder: (_, _, _) => Container(
                                             color: theme.colorScheme.surfaceContainerHighest,
                                             child: const Icon(Icons.music_note, size: 20),
                                           ),
@@ -500,17 +685,17 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                             size: 24,
                                           ),
                                     onPressed: () {
-                                      audioController.playTrack(track, playlist: tracks);
+                                      audioController.playTrack(track, playlist: filteredTracks);
                                     },
                                   ),
                                 ],
                               ),
                               onTap: () {
-                                audioController.playTrack(track, playlist: tracks);
+                                audioController.playTrack(track, playlist: filteredTracks);
                               },
                             );
                           },
-                          childCount: tracks.length,
+                          childCount: filteredTracks.length,
                         ),
                       ),
                     ],

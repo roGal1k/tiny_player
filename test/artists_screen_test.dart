@@ -208,5 +208,79 @@ void main() {
       expect(artistService.isFavorite('Linkin Park'), isTrue);
       expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
+
+    testWidgets('ArtistDetailScreen filters tracks by source provider chips', (tester) async {
+      final mockTracks = [
+        Track(
+          id: '1',
+          title: 'Numb',
+          artist: 'Linkin Park',
+          album: 'Meteora',
+          duration: const Duration(seconds: 185),
+          sourceUrl: 'http://hitmo/1.mp3',
+          providerId: 'hitmo',
+        ),
+        Track(
+          id: '2',
+          title: 'In The End',
+          artist: 'Linkin Park',
+          album: 'Hybrid Theory',
+          duration: const Duration(seconds: 216),
+          sourceUrl: 'http://youtube/2.mp3',
+          providerId: 'youtube',
+        ),
+        Track(
+          id: '3',
+          title: 'Faint',
+          artist: 'Linkin Park',
+          album: 'Meteora',
+          duration: const Duration(seconds: 162),
+          sourceUrl: 'http://hitmo/3.mp3',
+          providerId: 'hitmo',
+        ),
+      ];
+
+      artistService = FakeArtistService(mockTracks: mockTracks);
+
+      final testArtist = Artist(
+        name: 'Linkin Park',
+        artworkUrl: null,
+        addedAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(createTestApp(ArtistDetailScreen(artist: testArtist)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Should show provider filter chips: "Все (3)", "Hitmo (2)", "YouTube (1)"
+      expect(find.text('Все (3)'), findsOneWidget);
+      expect(find.text('Hitmo (2)'), findsOneWidget);
+      expect(find.text('YouTube (1)'), findsOneWidget);
+
+      // Initially all 3 tracks displayed
+      expect(find.text('Numb'), findsOneWidget);
+      expect(find.text('In The End'), findsOneWidget);
+      expect(find.text('Faint'), findsOneWidget);
+      expect(find.text('Слушать всё (3)'), findsOneWidget);
+
+      // Tap Hitmo chip
+      await tester.tap(find.text('Hitmo (2)'));
+      await tester.pumpAndSettle();
+
+      // Only Hitmo tracks should be shown
+      expect(find.text('Numb'), findsOneWidget);
+      expect(find.text('Faint'), findsOneWidget);
+      expect(find.text('In The End'), findsNothing);
+      expect(find.text('Слушать всё (2)'), findsOneWidget);
+
+      // Tap YouTube chip
+      await tester.tap(find.text('YouTube (1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('In The End'), findsOneWidget);
+      expect(find.text('Numb'), findsNothing);
+      expect(find.text('Faint'), findsNothing);
+      expect(find.text('Слушать всё (1)'), findsOneWidget);
+    });
   });
 }
