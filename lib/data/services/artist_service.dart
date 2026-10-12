@@ -51,6 +51,8 @@ class ArtistService extends ChangeNotifier {
     }
   }
 
+  VoidCallback? onFavoritesChanged;
+
   Future<bool> toggleFavorite(Artist artist) async {
     final exists = isFavorite(artist.name);
     if (exists) {
@@ -59,6 +61,7 @@ class ArtistService extends ChangeNotifier {
         (a) => a.name.trim().toLowerCase() == artist.name.trim().toLowerCase(),
       );
       notifyListeners();
+      onFavoritesChanged?.call();
       return false;
     } else {
       final toSave = artist.copyWith(addedAt: DateTime.now());
@@ -68,8 +71,18 @@ class ArtistService extends ChangeNotifier {
       );
       _favoriteArtists.insert(0, toSave);
       notifyListeners();
+      onFavoritesChanged?.call();
       return true;
     }
+  }
+
+  Future<void> mergeSyncedArtists(List<Artist> artists) async {
+    for (final artist in artists) {
+      if (!isFavorite(artist.name)) {
+        await _dbHelper.addFavoriteArtist(artist);
+      }
+    }
+    await loadFavorites();
   }
 
   Future<bool> toggleFavoriteByName(String name, {String? artworkUrl}) async {

@@ -82,6 +82,8 @@ void main() async {
     registry: registry,
     libraryService: localLibraryService,
   );
+  syncService.setArtistService(artistService);
+  artistService.onFavoritesChanged = () => syncService.scheduleAutoSync();
   final lyricsService = GeniusLyricsService(
     accessToken: dotenv.env['GENIUS_ACCESS_TOKEN'],
     clientId: dotenv.env['GENIUS_CLIENT_ID'],

@@ -12,8 +12,11 @@ from pydantic import BaseModel
 import jwt
 import aiosqlite
 import httpx
+import urllib.parse
 
 DB_PATH = os.environ.get("DB_PATH", "/var/lib/core_player/core_player.db")
+USER_FILES_DIR = os.environ.get("USER_FILES_DIR", "/var/lib/core_player/user_files")
+BACKUPS_DIR = os.path.join(USER_FILES_DIR, "backups")
 JWT_SECRET = os.environ.get("JWT_SECRET", "core_player_super_secret_jwt_key_2026_xyz")
 JWT_ALGORITHM = "HS256"
 
@@ -25,7 +28,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
+    expose_headers=["Content-Range", "Content-Length", "Accept-Ranges", "Content-Disposition"],
 )
 
 # ----------------- DB Initialization -----------------
@@ -39,9 +42,14 @@ async def get_db():
     finally:
         await db.close()
 
+shared_proxy_client: Optional[httpx.AsyncClient] = None
+
 @app.on_event("startup")
-async def init_db():
+async def startup_event():
+    global shared_proxy_client
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    os.makedirs(USER_FILES_DIR, exist_ok=True)
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -56,6 +64,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS user_sync (
                 user_id INTEGER PRIMARY KEY,
                 library_json TEXT DEFAULT '[]',
+                artists_json TEXT DEFAULT '[]',
                 playlists_json TEXT DEFAULT '[]',
                 history_json TEXT DEFAULT '[]',
                 settings_json TEXT DEFAULT '{}',
@@ -63,7 +72,23 @@ async def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
+        try:
+            await db.execute("ALTER TABLE user_sync ADD COLUMN artists_json TEXT DEFAULT '[]'")
+        except Exception:
+            pass
         await db.commit()
+
+    shared_proxy_client = httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0, connect=6.0),
+        limits=httpx.Limits(max_keepalive_connections=50, max_connections=200, keepalive_expiry=120.0),
+    )
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global shared_proxy_client
+    if shared_proxy_client:
+        await shared_proxy_client.aclose()
 
 # ----------------- Auth Helpers -----------------
 
@@ -108,6 +133,29 @@ async def get_current_user(request: Request, db: aiosqlite.Connection = Depends(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
         return {"id": row["id"], "username": row["username"]}
 
+# ----------------- User Files & Backups -----------------
+
+def save_user_data_file(username: str, data: dict) -> str:
+    try:
+        os.makedirs(USER_FILES_DIR, exist_ok=True)
+        os.makedirs(BACKUPS_DIR, exist_ok=True)
+        clean = username.strip().lower()
+        file_path = os.path.join(USER_FILES_DIR, f"{clean}_data.json")
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(BACKUPS_DIR, f"{clean}_{timestamp_str}.json")
+        try:
+            with open(backup_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return file_path
+    except Exception as e:
+        print(f"[CorePlayer Server] Error saving user file: {e}")
+        return ""
+
 # ----------------- Pydantic Models -----------------
 
 class AuthRequest(BaseModel):
@@ -116,6 +164,7 @@ class AuthRequest(BaseModel):
 
 class SyncPushRequest(BaseModel):
     library: List[Dict[str, Any]] = []
+    artists: List[Dict[str, Any]] = []
     playlists: List[Dict[str, Any]] = []
     history: List[Dict[str, Any]] = []
     settings: Dict[str, Any] = {}
@@ -147,7 +196,7 @@ async def register(req: AuthRequest, db: aiosqlite.Connection = Depends(get_db))
     user_id = cursor.lastrowid
     now_ms = int(time.time() * 1000)
     await db.execute(
-        "INSERT INTO user_sync (user_id, library_json, playlists_json, history_json, settings_json, updated_at) VALUES (?, '[]', '[]', '[]', '{}', ?)",
+        "INSERT INTO user_sync (user_id, library_json, artists_json, playlists_json, history_json, settings_json, updated_at) VALUES (?, '[]', '[]', '[]', '[]', '{}', ?)",
         (user_id, now_ms),
     )
     await db.commit()
@@ -174,24 +223,27 @@ async def get_me(user: dict = Depends(get_current_user)):
 async def sync_pull(user: dict = Depends(get_current_user), db: aiosqlite.Connection = Depends(get_db)):
     user_id = user["id"]
     async with db.execute(
-        "SELECT library_json, playlists_json, history_json, settings_json, updated_at FROM user_sync WHERE user_id = ?",
+        "SELECT * FROM user_sync WHERE user_id = ?",
         (user_id,),
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
             return {
                 "library": [],
+                "artists": [],
                 "playlists": [],
                 "history": [],
                 "settings": {},
                 "updated_at": 0,
             }
 
+        row_keys = row.keys()
         return {
-            "library": json.loads(row["library_json"]),
-            "playlists": json.loads(row["playlists_json"]),
-            "history": json.loads(row["history_json"]),
-            "settings": json.loads(row["settings_json"]),
+            "library": json.loads(row["library_json"] or "[]"),
+            "artists": json.loads(row["artists_json"] or "[]") if "artists_json" in row_keys and row["artists_json"] else [],
+            "playlists": json.loads(row["playlists_json"] or "[]"),
+            "history": json.loads(row["history_json"] or "[]"),
+            "settings": json.loads(row["settings_json"] or "{}"),
             "updated_at": row["updated_at"],
         }
 
@@ -206,15 +258,17 @@ async def sync_push(
 
     # 1. Fetch current server state
     async with db.execute(
-        "SELECT library_json, playlists_json, history_json, settings_json, updated_at FROM user_sync WHERE user_id = ?",
+        "SELECT * FROM user_sync WHERE user_id = ?",
         (user_id,),
     ) as cursor:
         row = await cursor.fetchone()
 
-    server_library: List[Dict[str, Any]] = json.loads(row["library_json"]) if row else []
-    server_playlists: List[Dict[str, Any]] = json.loads(row["playlists_json"]) if row else []
-    server_history: List[Dict[str, Any]] = json.loads(row["history_json"]) if row else []
-    server_settings: Dict[str, Any] = json.loads(row["settings_json"]) if row else {}
+    row_keys = row.keys() if row else []
+    server_library: List[Dict[str, Any]] = json.loads(row["library_json"] or "[]") if row else []
+    server_artists: List[Dict[str, Any]] = json.loads(row["artists_json"] or "[]") if row and "artists_json" in row_keys and row["artists_json"] else []
+    server_playlists: List[Dict[str, Any]] = json.loads(row["playlists_json"] or "[]") if row else []
+    server_history: List[Dict[str, Any]] = json.loads(row["history_json"] or "[]") if row else []
+    server_settings: Dict[str, Any] = json.loads(row["settings_json"] or "{}") if row else {}
 
     # 2. Merge libraries by unique key: (providerId, id)
     seen_keys = set()
@@ -234,15 +288,34 @@ async def sync_push(
             seen_keys.add(key)
             merged_library.append(t)
 
+    # 3. Merge artists by name (case-insensitive)
+    seen_artists = set()
+    merged_artists = []
+
+    for a in req.artists:
+        name = (a.get("name") or "").strip().lower()
+        if name and name not in seen_artists:
+            seen_artists.add(name)
+            merged_artists.append(a)
+
+    for a in server_artists:
+        name = (a.get("name") or "").strip().lower()
+        if name and name not in seen_artists:
+            seen_artists.add(name)
+            merged_artists.append(a)
+
     # Merge settings (client overrides server)
     merged_settings = {**server_settings, **req.settings}
+    merged_playlists = req.playlists if req.playlists else server_playlists
+    merged_history = req.history if req.history else server_history
 
-    # Save to DB
+    # Save to SQLite DB
     await db.execute("""
-        INSERT INTO user_sync (user_id, library_json, playlists_json, history_json, settings_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO user_sync (user_id, library_json, artists_json, playlists_json, history_json, settings_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             library_json = excluded.library_json,
+            artists_json = excluded.artists_json,
             playlists_json = excluded.playlists_json,
             history_json = excluded.history_json,
             settings_json = excluded.settings_json,
@@ -250,18 +323,153 @@ async def sync_push(
     """, (
         user_id,
         json.dumps(merged_library),
-        json.dumps(req.playlists if req.playlists else server_playlists),
-        json.dumps(req.history if req.history else server_history),
+        json.dumps(merged_artists),
+        json.dumps(merged_playlists),
+        json.dumps(merged_history),
         json.dumps(merged_settings),
         now_ms,
     ))
     await db.commit()
 
+    # Save user file and backup to VPS disk
+    full_user_data = {
+        "version": 1,
+        "username": user["username"],
+        "updated_at": now_ms,
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "library": merged_library,
+        "artists": merged_artists,
+        "playlists": merged_playlists,
+        "history": merged_history,
+        "settings": merged_settings,
+    }
+    save_user_data_file(user["username"], full_user_data)
+
     return {
         "status": "success",
         "library": merged_library,
-        "playlists": req.playlists if req.playlists else server_playlists,
+        "artists": merged_artists,
+        "playlists": merged_playlists,
         "settings": merged_settings,
+        "updated_at": now_ms,
+    }
+
+# ----------------- User Profile File Endpoints -----------------
+
+@app.get("/api/user/file/info")
+async def get_user_file_info(user: dict = Depends(get_current_user), db: aiosqlite.Connection = Depends(get_db)):
+    clean_username = user["username"].strip().lower()
+    file_path = os.path.join(USER_FILES_DIR, f"{clean_username}_data.json")
+    exists = os.path.isfile(file_path)
+    file_size = os.path.getsize(file_path) if exists else 0
+    mtime = int(os.path.getmtime(file_path) * 1000) if exists else 0
+
+    async with db.execute("SELECT * FROM user_sync WHERE user_id = ?", (user["id"],)) as cursor:
+        row = await cursor.fetchone()
+        row_keys = row.keys() if row else []
+        tracks_count = len(json.loads(row["library_json"])) if row and row["library_json"] else 0
+        artists_count = len(json.loads(row["artists_json"])) if row and "artists_json" in row_keys and row["artists_json"] else 0
+        updated_at = row["updated_at"] if row else 0
+
+    return {
+        "filename": f"{clean_username}_data.json",
+        "exists": exists,
+        "size_bytes": file_size,
+        "mtime_ms": mtime,
+        "updated_at": updated_at,
+        "tracks_count": tracks_count,
+        "artists_count": artists_count,
+    }
+
+@app.get("/api/user/file/download")
+async def download_user_file(user: dict = Depends(get_current_user), db: aiosqlite.Connection = Depends(get_db)):
+    clean_username = user["username"].strip().lower()
+    file_path = os.path.join(USER_FILES_DIR, f"{clean_username}_data.json")
+
+    if not os.path.isfile(file_path):
+        async with db.execute("SELECT * FROM user_sync WHERE user_id = ?", (user["id"],)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="No user data found")
+            row_keys = row.keys()
+            full_user_data = {
+                "version": 1,
+                "username": user["username"],
+                "updated_at": row["updated_at"],
+                "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "library": json.loads(row["library_json"] or "[]"),
+                "artists": json.loads(row["artists_json"] or "[]") if "artists_json" in row_keys and row["artists_json"] else [],
+                "playlists": json.loads(row["playlists_json"] or "[]"),
+                "history": json.loads(row["history_json"] or "[]"),
+                "settings": json.loads(row["settings_json"] or "{}"),
+            }
+            save_user_data_file(user["username"], full_user_data)
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    filename = f"{clean_username}_data.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+@app.post("/api/user/file/upload")
+async def upload_user_file(request: Request, user: dict = Depends(get_current_user), db: aiosqlite.Connection = Depends(get_db)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    library = body.get("library") or []
+    artists = body.get("artists") or body.get("favorite_artists") or []
+    playlists = body.get("playlists") or []
+    history = body.get("history") or []
+    settings = body.get("settings") or {}
+    now_ms = int(time.time() * 1000)
+
+    await db.execute("""
+        INSERT INTO user_sync (user_id, library_json, artists_json, playlists_json, history_json, settings_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            library_json = excluded.library_json,
+            artists_json = excluded.artists_json,
+            playlists_json = excluded.playlists_json,
+            history_json = excluded.history_json,
+            settings_json = excluded.settings_json,
+            updated_at = excluded.updated_at
+    """, (
+        user["id"],
+        json.dumps(library),
+        json.dumps(artists),
+        json.dumps(playlists),
+        json.dumps(history),
+        json.dumps(settings),
+        now_ms,
+    ))
+    await db.commit()
+
+    full_user_data = {
+        "version": 1,
+        "username": user["username"],
+        "updated_at": now_ms,
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "library": library,
+        "artists": artists,
+        "playlists": playlists,
+        "history": history,
+        "settings": settings,
+    }
+    save_user_data_file(user["username"], full_user_data)
+
+    return {
+        "status": "success",
+        "tracks_count": len(library),
+        "artists_count": len(artists),
         "updated_at": now_ms,
     }
 
@@ -275,6 +483,30 @@ DEFAULT_PROXY_HEADERS = {
     "X-Real-IP": "85.249.20.1",
     "CF-Connecting-IP": "85.249.20.1",
 }
+
+HITMO_MIRRORS = [
+    "https://ru.hitmoz.org",
+    "https://rur.hitmotop.com",
+    "https://rus.hitmotop.com",
+]
+
+def get_candidate_stream_urls(target_url: str) -> list[str]:
+    candidates = [target_url]
+    if "/get/music/" in target_url:
+        parsed = urllib.parse.urlparse(target_url)
+        for mirror in HITMO_MIRRORS:
+            mirror_parsed = urllib.parse.urlparse(mirror)
+            alt = urllib.parse.urlunparse((
+                mirror_parsed.scheme,
+                mirror_parsed.netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment,
+            ))
+            if alt not in candidates:
+                candidates.append(alt)
+    return candidates
 
 @app.api_route("/api/proxy/stream", methods=["GET", "HEAD", "OPTIONS"])
 async def proxy_stream(request: Request, url: str = Query(..., description="Target stream URL")):
@@ -296,55 +528,87 @@ async def proxy_stream(request: Request, url: str = Query(..., description="Targ
     if range_header:
         req_headers["Range"] = range_header
 
-    client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
-    try:
-        if request.method == "HEAD":
-            resp = await client.head(url, headers=req_headers)
+    client = shared_proxy_client or httpx.AsyncClient(follow_redirects=True, timeout=30.0)
+    candidates = get_candidate_stream_urls(url)
+
+    last_error = None
+    for cand_url in candidates:
+        try:
+            if request.method == "HEAD":
+                resp = await client.head(cand_url, headers=req_headers, follow_redirects=True)
+                if resp.status_code not in (200, 206, 302, 304):
+                    continue
+                res_headers = {}
+                for key in ["content-type", "content-length", "content-range", "accept-ranges"]:
+                    val = resp.headers.get(key)
+                    if val:
+                        res_headers[key] = val
+                res_headers["accept-ranges"] = "bytes"
+                res_headers["content-disposition"] = "inline"
+                res_headers["access-control-allow-origin"] = "*"
+                res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept, Authorization"
+                res_headers["access-control-expose-headers"] = "Content-Range, Content-Length, Accept-Ranges"
+                if "content-type" not in res_headers or not res_headers["content-type"]:
+                    res_headers["content-type"] = "audio/mpeg"
+                if client is not shared_proxy_client:
+                    await client.aclose()
+                return Response(
+                    status_code=resp.status_code,
+                    headers=res_headers,
+                    media_type=res_headers["content-type"],
+                )
+
+            req = client.build_request("GET", cand_url, headers=req_headers)
+            resp = await client.send(req, stream=True, follow_redirects=True)
+
+            if resp.status_code not in (200, 206, 304):
+                await resp.aclose()
+                continue
+
             res_headers = {}
             for key in ["content-type", "content-length", "content-range", "accept-ranges"]:
                 val = resp.headers.get(key)
                 if val:
                     res_headers[key] = val
+
+            res_headers["accept-ranges"] = "bytes"
+            res_headers["content-disposition"] = "inline"
             res_headers["access-control-allow-origin"] = "*"
             res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept, Authorization"
             res_headers["access-control-expose-headers"] = "Content-Range, Content-Length, Accept-Ranges"
-            await client.aclose()
-            return Response(
+            if "content-type" not in res_headers or not res_headers["content-type"]:
+                res_headers["content-type"] = "audio/mpeg"
+
+            async def stream_body():
+                try:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        yield chunk
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        await resp.aclose()
+                    except Exception:
+                        pass
+                    if client is not shared_proxy_client:
+                        try:
+                            await client.aclose()
+                        except Exception:
+                            pass
+
+            return StreamingResponse(
+                stream_body(),
                 status_code=resp.status_code,
                 headers=res_headers,
-                media_type=resp.headers.get("content-type", "audio/mpeg"),
+                media_type=res_headers["content-type"],
             )
+        except Exception as e:
+            last_error = e
+            continue
 
-        req = client.build_request("GET", url, headers=req_headers)
-        resp = await client.send(req, stream=True)
-
-        res_headers = {}
-        for key in ["content-type", "content-length", "content-range", "accept-ranges"]:
-            val = resp.headers.get(key)
-            if val:
-                res_headers[key] = val
-
-        res_headers["access-control-allow-origin"] = "*"
-        res_headers["access-control-allow-headers"] = "Range, Content-Type, Accept, Authorization"
-        res_headers["access-control-expose-headers"] = "Content-Range, Content-Length, Accept-Ranges"
-
-        async def stream_body():
-            try:
-                async for chunk in resp.aiter_bytes(chunk_size=65536):
-                    yield chunk
-            finally:
-                await resp.aclose()
-                await client.aclose()
-
-        return StreamingResponse(
-            stream_body(),
-            status_code=resp.status_code,
-            headers=res_headers,
-            media_type=resp.headers.get("content-type", "audio/mpeg"),
-        )
-    except Exception as e:
+    if client is not shared_proxy_client:
         await client.aclose()
-        raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
+    raise HTTPException(status_code=502, detail=f"Proxy error: {str(last_error or 'Upstream failed')}")
 
 @app.api_route("/api/proxy/http", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy_http(request: Request, url: str = Query(..., description="Target URL")):
@@ -367,27 +631,32 @@ async def proxy_http(request: Request, url: str = Query(..., description="Target
 
     body = await request.body() if request.method == "POST" else None
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=25.0) as client:
-        try:
-            resp = await client.request(
-                method=request.method,
-                url=url,
-                headers=req_headers,
-                content=body,
-            )
-            res_headers = {
-                "access-control-allow-origin": "*",
-                "access-control-allow-methods": "GET, POST, HEAD, OPTIONS",
-                "access-control-allow-headers": "*",
-            }
-            if "content-type" in resp.headers:
-                res_headers["content-type"] = resp.headers["content-type"]
+    client = shared_proxy_client or httpx.AsyncClient(follow_redirects=True, timeout=25.0)
+    try:
+        resp = await client.request(
+            method=request.method,
+            url=url,
+            headers=req_headers,
+            content=body,
+        )
+        res_headers = {
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, HEAD, OPTIONS",
+            "access-control-allow-headers": "*",
+        }
+        if "content-type" in resp.headers:
+            res_headers["content-type"] = resp.headers["content-type"]
 
-            return Response(
-                content=resp.content,
-                status_code=resp.status_code,
-                headers=res_headers,
-                media_type=resp.headers.get("content-type"),
-            )
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
+        if client is not shared_proxy_client:
+            await client.aclose()
+
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=res_headers,
+            media_type=resp.headers.get("content-type"),
+        )
+    except Exception as e:
+        if client is not shared_proxy_client:
+            await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")

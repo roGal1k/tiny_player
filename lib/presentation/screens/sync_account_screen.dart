@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../data/services/sync_service.dart';
 
@@ -65,9 +66,13 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
   }
 
   Widget _buildLoggedInView(SyncService syncService, ThemeData theme) {
+    final vpsFile = syncService.vpsFileInfo;
+    final fileSizeKb = ((vpsFile?.sizeBytes ?? 0) / 1024).toStringAsFixed(1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 1. Account Profile Card
         Card(
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -105,16 +110,19 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
                     ),
                   ],
                 ),
-                const Divider(height: 32),
+                const Divider(height: 28),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Статус:'),
-                    Text(
-                      syncService.statusMessage ?? 'Подключено',
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
+                    Flexible(
+                      child: Text(
+                        syncService.statusMessage ?? 'Подключено к VPS',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -136,7 +144,78 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+
+        // 2. VPS File Card
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.save_as_outlined, color: Colors.amber, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Файл профиля на VPS',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            vpsFile != null && vpsFile.exists
+                                ? '${vpsFile.filename} ($fileSizeKb КБ)'
+                                : '${syncService.username}_data.json (сохраняется автоматически)',
+                            style: const TextStyle(color: Colors.white60, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (vpsFile != null && vpsFile.exists)
+                      const Chip(
+                        label: Text('На сервере', style: TextStyle(fontSize: 11)),
+                        backgroundColor: Colors.green,
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    Chip(
+                      avatar: const Icon(Icons.music_note, size: 16, color: Colors.cyanAccent),
+                      label: Text('${vpsFile?.tracksCount ?? "—"} треков (лайков)'),
+                      backgroundColor: Colors.white.withOpacity(0.06),
+                    ),
+                    Chip(
+                      avatar: const Icon(Icons.person, size: 16, color: Colors.purpleAccent),
+                      label: Text('${vpsFile?.artistsCount ?? "—"} авторов'),
+                      backgroundColor: Colors.white.withOpacity(0.06),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 3. Actions
         FilledButton.icon(
           onPressed: syncService.isSyncing
               ? null
@@ -157,10 +236,76 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
               : const Icon(Icons.sync),
           label: Text(syncService.isSyncing ? 'Синхронизация...' : 'Синхронизировать сейчас'),
           style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
+        const SizedBox(height: 10),
+
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: syncService.isSyncing
+                    ? null
+                    : () async {
+                        final ok = await syncService.saveBackupFileToVps();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(ok
+                                  ? 'Файл пользователя успешно сохранен на VPS'
+                                  : 'Не удалось сохранить файл на VPS'),
+                            ),
+                          );
+                        }
+                      },
+                icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                label: const Text('Сохранить на VPS'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: syncService.isSyncing
+                    ? null
+                    : () async {
+                        _confirmRestoreFromVps(syncService);
+                      },
+                icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                label: const Text('Восстановить с VPS'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        Row(
+          children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _showExportDialog(syncService),
+                icon: const Icon(Icons.file_upload_outlined, size: 18),
+                label: const Text('Экспорт .json'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _showImportDialog(syncService),
+                icon: const Icon(Icons.file_download_outlined, size: 18),
+                label: const Text('Импорт .json'),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
+
         OutlinedButton.icon(
           onPressed: () => _confirmLogout(syncService),
           icon: const Icon(Icons.logout, color: Colors.redAccent),
@@ -315,6 +460,158 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
               syncService.logout();
             },
             child: const Text('Выйти', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmRestoreFromVps(SyncService syncService) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Восстановить данные с VPS?'),
+        content: const Text(
+          'Все сохраненные авторы, любимые треки (лайки) и настройки будут загружены из вашего файла на VPS и объединены с текущей медиатекой.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ok = await syncService.restoreFromVpsFile();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(ok
+                        ? (syncService.statusMessage ?? 'Данные успешно восстановлены с VPS')
+                        : 'Ошибка восстановления файла с VPS'),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.cloud_download),
+            label: const Text('Восстановить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showExportDialog(SyncService syncService) async {
+    final jsonStr = await syncService.exportLocalBackupJson();
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Экспорт файла данных'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Полная копия ваших авторов, лайков и настроек в формате JSON:',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 180,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    jsonStr,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Закрыть'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonStr));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Файл JSON скопирован в буфер обмена')),
+              );
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Скопировать JSON'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImportDialog(SyncService syncService) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Импорт файла данных'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Вставьте содержимое резервного JSON файла (авторы, лайки, настройки):',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 8,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                decoration: const InputDecoration(
+                  hintText: '{\n  "library": [...],\n  "favorite_artists": [...]\n}',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+              final count = await syncService.importLocalBackupJson(text);
+              if (mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(count > 0
+                        ? 'Успешно импортировано объектов: $count'
+                        : 'Ошибка: некорректный формат JSON или пустой файл'),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.file_download),
+            label: const Text('Импортировать'),
           ),
         ],
       ),

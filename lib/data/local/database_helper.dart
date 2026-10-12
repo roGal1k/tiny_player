@@ -350,5 +350,73 @@ CREATE TABLE IF NOT EXISTS favorite_artists (
     );
     return maps.isNotEmpty;
   }
+
+  // -------------------------------------------------------------
+  // Full User Data File Export & Import (VPS & Local Backups)
+  // -------------------------------------------------------------
+
+  Future<Map<String, dynamic>> exportFullUserData() async {
+    final libraryTracks = await getLibraryTracks();
+    final favoriteArtists = await getFavoriteArtists();
+    final db = await database;
+    final settingsList = await db.query('settings');
+    final settingsMap = <String, String>{
+      for (final row in settingsList)
+        (row['key'] as String): (row['value'] as String),
+    };
+
+    return {
+      'version': 1,
+      'exported_at': DateTime.now().toIso8601String(),
+      'library': libraryTracks.map((t) => t.toMap()).toList(),
+      'favorite_artists': favoriteArtists.map((a) => a.toMap()).toList(),
+      'settings': settingsMap,
+    };
+  }
+
+  Future<int> importFullUserData(Map<String, dynamic> data) async {
+    int importedCount = 0;
+
+    // 1. Tracks (Library)
+    final rawLibrary = (data['library'] ?? data['tracks']) as List?;
+    if (rawLibrary != null) {
+      for (final item in rawLibrary) {
+        if (item is Map<String, dynamic>) {
+          try {
+            final track = Track.fromMap(item);
+            await addToLibrary(track);
+            importedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 2. Favorite Artists
+    final rawArtists = (data['artists'] ?? data['favorite_artists']) as List?;
+    if (rawArtists != null) {
+      for (final item in rawArtists) {
+        if (item is Map<String, dynamic>) {
+          try {
+            final artist = Artist.fromMap(item);
+            await addFavoriteArtist(artist);
+            importedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 3. Settings
+    final rawSettings = data['settings'] as Map<String, dynamic>?;
+    if (rawSettings != null) {
+      for (final entry in rawSettings.entries) {
+        try {
+          await setSetting(entry.key, entry.value.toString());
+        } catch (_) {}
+      }
+    }
+
+    return importedCount;
+  }
 }
+
 

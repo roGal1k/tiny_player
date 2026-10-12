@@ -18,6 +18,7 @@ void main() {
       await db.delete('settings');
       await db.delete('library');
       await db.delete('tracks');
+      await db.delete('favorite_artists');
     });
 
     test('initializes with default server URL and logged out state', () async {
@@ -207,19 +208,16 @@ void main() {
         return http.Response('Not Found', 404);
       });
 
+      // Verify local library is empty initially
+      final initialTracks = await dbHelper.getLibraryTracks();
+      expect(initialTracks.isEmpty, isTrue);
+
       await dbHelper.setSetting('sync_token', 'valid_token');
       await dbHelper.setSetting('sync_username', 'test_user');
 
       final sync = SyncService(dbHelper: dbHelper, client: mockClient);
       await sync.init();
       expect(sync.isLoggedIn, isTrue);
-
-      // Verify local library is empty initially
-      final initialTracks = await dbHelper.getLibraryTracks();
-      expect(initialTracks.isEmpty, isTrue);
-
-      final ok = await sync.syncNow();
-      expect(ok, isTrue);
       expect(sync.statusMessage, contains('1'));
 
       // Verify remote track was merged into local library
@@ -229,6 +227,149 @@ void main() {
       expect(updatedTracks.first.title, equals('Remote Song'));
       expect(updatedTracks.first.artist, equals('Cloud Artist'));
       expect(sync.lastSyncedAt, isNotNull);
+    });
+
+    test('syncNow merges server artists into local database', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/api/sync/push') {
+          return http.Response(
+            json.encode({
+              'status': 'synced',
+              'library': [],
+              'artists': [
+                {'name': 'JEEMBO', 'artwork_url': 'https://jeembo.jpg', 'added_at': '2026-10-12T10:00:00Z'},
+                {'name': 'TVETH', 'artwork_url': 'https://tveth.jpg', 'added_at': '2026-10-12T10:05:00Z'},
+              ],
+              'playlists': [],
+              'history': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        } else if (request.url.path == '/api/user/file/info') {
+          return http.Response(
+            json.encode({
+              'filename': 'test_user_data.json',
+              'exists': true,
+              'size_bytes': 1024,
+              'tracks_count': 0,
+              'artists_count': 2,
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      await dbHelper.setSetting('sync_token', 'valid_token');
+      await dbHelper.setSetting('sync_username', 'test_user');
+
+      final sync = SyncService(dbHelper: dbHelper, client: mockClient);
+      await sync.init();
+
+      final ok = await sync.syncNow();
+      expect(ok, isTrue);
+
+      final favoriteArtists = await dbHelper.getFavoriteArtists();
+      expect(favoriteArtists.length, equals(2));
+      expect(favoriteArtists.any((a) => a.name == 'JEEMBO'), isTrue);
+      expect(favoriteArtists.any((a) => a.name == 'TVETH'), isTrue);
+      expect(sync.vpsFileInfo?.exists, isTrue);
+      expect(sync.vpsFileInfo?.artistsCount, equals(2));
+    });
+
+    test('exportLocalBackupJson and importLocalBackupJson work correctly', () async {
+      final sync = SyncService(dbHelper: dbHelper);
+      await sync.init();
+
+      final track = Track(
+        id: 't_local_1',
+        title: 'Local Favorite',
+        artist: 'Artist One',
+        duration: const Duration(seconds: 180),
+        sourceUrl: 'https://example.com/1.mp3',
+        providerId: 'hitmo',
+      );
+      await dbHelper.addToLibrary(track);
+
+      final jsonExport = await sync.exportLocalBackupJson();
+      expect(jsonExport, contains('t_local_1'));
+      expect(jsonExport, contains('Local Favorite'));
+
+      // Clear library
+      final db = await dbHelper.database;
+      await db.delete('library');
+      expect((await dbHelper.getLibraryTracks()).isEmpty, isTrue);
+
+      // Import back
+      final imported = await sync.importLocalBackupJson(jsonExport);
+      expect(imported, greaterThan(0));
+
+      final restored = await dbHelper.getLibraryTracks();
+      expect(restored.length, equals(1));
+      expect(restored.first.id, equals('t_local_1'));
+    });
+
+    test('restoreFromVpsFile restores tracks and artists from VPS download', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/api/user/file/download') {
+          return http.Response(
+            json.encode({
+              'version': 1,
+              'username': 'cloud_user',
+              'library': [
+                {
+                  'id': 'vps_track_99',
+                  'title': 'VPS Song',
+                  'artist': 'VPS Artist',
+                  'duration_ms': 200000,
+                  'source_url': 'https://example.com/vps.mp3',
+                  'provider_id': 'hitmo',
+                  'is_explicit': 0,
+                  'is_streamable': 1,
+                  'is_downloadable': 1,
+                }
+              ],
+              'artists': [
+                {'name': 'BOULEVARD DEPO', 'artwork_url': null, 'added_at': '2026-10-12T00:00:00Z'}
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        } else if (request.url.path == '/api/user/file/info') {
+          return http.Response(
+            json.encode({
+              'filename': 'cloud_user_data.json',
+              'exists': true,
+              'size_bytes': 1500,
+              'tracks_count': 1,
+              'artists_count': 1,
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      await dbHelper.setSetting('sync_token', 'valid_token');
+      await dbHelper.setSetting('sync_username', 'cloud_user');
+
+      final sync = SyncService(dbHelper: dbHelper, client: mockClient);
+      await sync.init();
+
+      final ok = await sync.restoreFromVpsFile();
+      expect(ok, isTrue);
+
+      final tracks = await dbHelper.getLibraryTracks();
+      expect(tracks.length, equals(1));
+      expect(tracks.first.id, equals('vps_track_99'));
+
+      final artists = await dbHelper.getFavoriteArtists();
+      expect(artists.length, equals(1));
+      expect(artists.first.name, equals('BOULEVARD DEPO'));
     });
   });
 }

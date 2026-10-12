@@ -1,13 +1,49 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../domain/models/artist.dart';
 import '../../domain/models/track.dart';
 import '../local/database_helper.dart';
+import 'artist_service.dart';
 import 'web_proxy_helper.dart';
+
+class VpsFileInfo {
+  final String filename;
+  final bool exists;
+  final int sizeBytes;
+  final int? mtimeMs;
+  final int? updatedAt;
+  final int tracksCount;
+  final int artistsCount;
+
+  const VpsFileInfo({
+    required this.filename,
+    required this.exists,
+    required this.sizeBytes,
+    this.mtimeMs,
+    this.updatedAt,
+    required this.tracksCount,
+    required this.artistsCount,
+  });
+
+  factory VpsFileInfo.fromMap(Map<String, dynamic> map) {
+    return VpsFileInfo(
+      filename: map['filename'] as String? ?? 'user_data.json',
+      exists: map['exists'] as bool? ?? false,
+      sizeBytes: map['size_bytes'] as int? ?? 0,
+      mtimeMs: map['mtime_ms'] as int?,
+      updatedAt: map['updated_at'] as int?,
+      tracksCount: map['tracks_count'] as int? ?? 0,
+      artistsCount: map['artists_count'] as int? ?? 0,
+    );
+  }
+}
 
 class SyncService extends ChangeNotifier {
   final DatabaseHelper _dbHelper;
   final http.Client _client;
+  ArtistService? _artistService;
 
   String _serverUrl = WebProxyHelper.webOrigin;
   String? _token;
@@ -15,12 +51,20 @@ class SyncService extends ChangeNotifier {
   bool _isSyncing = false;
   DateTime? _lastSyncedAt;
   String? _statusMessage;
+  VpsFileInfo? _vpsFileInfo;
+  Timer? _autoSyncTimer;
 
   SyncService({
     DatabaseHelper? dbHelper,
     http.Client? client,
+    ArtistService? artistService,
   })  : _dbHelper = dbHelper ?? DatabaseHelper.instance,
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _artistService = artistService;
+
+  void setArtistService(ArtistService service) {
+    _artistService = service;
+  }
 
   String get serverUrl => _serverUrl;
   String? get token => _token;
@@ -29,6 +73,7 @@ class SyncService extends ChangeNotifier {
   bool get isSyncing => _isSyncing;
   DateTime? get lastSyncedAt => _lastSyncedAt;
   String? get statusMessage => _statusMessage;
+  VpsFileInfo? get vpsFileInfo => _vpsFileInfo;
 
   Future<void> init() async {
     try {
@@ -45,7 +90,8 @@ class SyncService extends ChangeNotifier {
       notifyListeners();
 
       if (isLoggedIn) {
-        syncNow();
+        await syncNow();
+        await fetchVpsFileInfo();
       }
     } catch (e) {
       if (kDebugMode) {
@@ -152,14 +198,24 @@ class SyncService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _autoSyncTimer?.cancel();
     _token = null;
     _username = null;
     _lastSyncedAt = null;
+    _vpsFileInfo = null;
     _statusMessage = null;
     await _dbHelper.setSetting('sync_token', '');
     await _dbHelper.setSetting('sync_username', '');
     await _dbHelper.setSetting('sync_last_synced_at', '');
     notifyListeners();
+  }
+
+  void scheduleAutoSync() {
+    if (!isLoggedIn) return;
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer(const Duration(seconds: 3), () {
+      syncNow();
+    });
   }
 
   Future<bool> syncNow() async {
@@ -169,9 +225,12 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Get local tracks
+      // 1. Get local tracks and favorite artists
       final localTracks = await _dbHelper.getLibraryTracks();
       final tracksPayload = localTracks.map((t) => t.toMap()).toList();
+
+      final localArtists = await _dbHelper.getFavoriteArtists();
+      final artistsPayload = localArtists.map((a) => a.toMap()).toList();
 
       // 2. Push to server and get merged results
       final uri = Uri.parse('$_serverUrl/api/sync/push');
@@ -183,6 +242,7 @@ class SyncService extends ChangeNotifier {
         },
         body: json.encode({
           'library': tracksPayload,
+          'artists': artistsPayload,
           'playlists': [],
           'history': [],
           'settings': {},
@@ -193,25 +253,50 @@ class SyncService extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final serverLibrary = data['library'] as List? ?? [];
+        final serverArtists = data['artists'] as List? ?? [];
 
         // 3. Merge server tracks into local database
         final localTrackIds = localTracks.map((t) => t.id).toSet();
-        int addedCount = 0;
+        int addedTracksCount = 0;
         for (final item in serverLibrary) {
           if (item is Map<String, dynamic>) {
             final track = Track.fromMap(item);
             if (!localTrackIds.contains(track.id)) {
               await _dbHelper.addToLibrary(track);
-              addedCount++;
+              addedTracksCount++;
             }
           }
         }
 
+        // 4. Merge server artists into local database
+        final localArtistNames = localArtists.map((a) => a.name.trim().toLowerCase()).toSet();
+        int addedArtistsCount = 0;
+        for (final item in serverArtists) {
+          if (item is Map<String, dynamic>) {
+            final artist = Artist.fromMap(item);
+            if (!localArtistNames.contains(artist.name.trim().toLowerCase())) {
+              await _dbHelper.addFavoriteArtist(artist);
+              addedArtistsCount++;
+            }
+          }
+        }
+
+        if (addedArtistsCount > 0 && _artistService != null) {
+          await _artistService!.loadFavorites();
+        }
+
         _lastSyncedAt = DateTime.now();
         await _dbHelper.setSetting('sync_last_synced_at', _lastSyncedAt!.toIso8601String());
-        _statusMessage = addedCount > 0
-            ? 'Синхронизировано (+$addedCount новых треков)'
-            : 'Медиатека актуальна';
+
+        final summaryParts = <String>[];
+        if (addedTracksCount > 0) summaryParts.add('+$addedTracksCount треков');
+        if (addedArtistsCount > 0) summaryParts.add('+$addedArtistsCount авторов');
+
+        _statusMessage = summaryParts.isNotEmpty
+            ? 'Синхронизировано (${summaryParts.join(', ')})'
+            : 'Данные актуальны (сохранены в файл на VPS)';
+
+        await fetchVpsFileInfo();
         notifyListeners();
         return true;
       } else {
@@ -224,5 +309,103 @@ class SyncService extends ChangeNotifier {
       notifyListeners();
     }
     return false;
+  }
+
+  Future<VpsFileInfo?> fetchVpsFileInfo() async {
+    if (!isLoggedIn) return null;
+    try {
+      final uri = Uri.parse('$_serverUrl/api/user/file/info');
+      final resp = await _client.get(
+        uri,
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        _vpsFileInfo = VpsFileInfo.fromMap(data);
+        notifyListeners();
+        return _vpsFileInfo;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('fetchVpsFileInfo error: $e');
+      }
+    }
+    return null;
+  }
+
+  Future<bool> saveBackupFileToVps() async {
+    return await syncNow();
+  }
+
+  Future<bool> restoreFromVpsFile() async {
+    if (!isLoggedIn) return false;
+    _isSyncing = true;
+    _statusMessage = 'Восстановление из файла на VPS...';
+    notifyListeners();
+
+    try {
+      final uri = Uri.parse('$_serverUrl/api/user/file/download');
+      final resp = await _client.get(
+        uri,
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+
+      if (resp.statusCode == 200) {
+        final data = json.decode(utf8.decode(resp.bodyBytes));
+        if (data is Map<String, dynamic>) {
+          final count = await _dbHelper.importFullUserData(data);
+          if (_artistService != null) {
+            await _artistService!.loadFavorites();
+          }
+          _lastSyncedAt = DateTime.now();
+          await _dbHelper.setSetting('sync_last_synced_at', _lastSyncedAt!.toIso8601String());
+          await fetchVpsFileInfo();
+          _statusMessage = 'Восстановлено из файла на VPS ($count объектов)';
+          notifyListeners();
+          return true;
+        }
+      } else {
+        _statusMessage = 'Ошибка загрузки файла с VPS (${resp.statusCode})';
+      }
+    } catch (e) {
+      _statusMessage = 'Ошибка восстановления: $e';
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<String> exportLocalBackupJson() async {
+    final data = await _dbHelper.exportFullUserData();
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  Future<int> importLocalBackupJson(String jsonString) async {
+    try {
+      final data = json.decode(jsonString);
+      if (data is Map<String, dynamic>) {
+        final count = await _dbHelper.importFullUserData(data);
+        if (_artistService != null) {
+          await _artistService!.loadFavorites();
+        }
+        if (isLoggedIn) {
+          scheduleAutoSync();
+        }
+        notifyListeners();
+        return count;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('importLocalBackupJson error: $e');
+      }
+    }
+    return 0;
+  }
+
+  @override
+  void dispose() {
+    _autoSyncTimer?.cancel();
+    super.dispose();
   }
 }

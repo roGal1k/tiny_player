@@ -47,6 +47,9 @@ class FakeArtistService extends ChangeNotifier implements ArtistService {
   final List<Track> _tracks = [];
   bool _searching = false;
 
+  @override
+  VoidCallback? onFavoritesChanged;
+
   FakeArtistService({List<Artist>? initialFavorites, List<Track>? mockTracks}) {
     if (initialFavorites != null) {
       for (final a in initialFavorites) {
@@ -109,6 +112,14 @@ class FakeArtistService extends ChangeNotifier implements ArtistService {
   @override
   Future<List<Track>> getArtistTracks(String artistName) async {
     return _tracks.where((t) => t.artist.toLowerCase() == artistName.toLowerCase()).toList();
+  }
+
+  @override
+  Future<void> mergeSyncedArtists(List<Artist> artists) async {
+    for (final a in artists) {
+      _favs[a.name.toLowerCase().trim()] = a;
+    }
+    notifyListeners();
   }
 }
 
