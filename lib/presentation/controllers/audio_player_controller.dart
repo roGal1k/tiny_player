@@ -4,10 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../domain/models/track.dart';
 import '../../data/providers/provider_registry.dart';
-import '../../data/providers/youtube_provider.dart';
 import '../../data/services/equalizer_service.dart';
 import '../../data/services/settings_service.dart';
 import '../../data/services/audio_cache_service.dart';
+import '../../data/services/track_preload_manager.dart';
 import '../../data/services/core_audio_handler.dart';
 import '../../data/services/web_proxy_helper.dart';
 import '../../data/services/web_media_session_helper.dart';
@@ -24,6 +24,7 @@ class AudioPlayerController extends ChangeNotifier {
   final SettingsService? settingsService;
   final AudioCacheService? cacheService;
   final CoreAudioHandler? audioHandler;
+  final TrackPreloadManager preloadManager;
   final AudioPlayer _player;
 
   Track? _currentTrack;
@@ -58,7 +59,14 @@ class AudioPlayerController extends ChangeNotifier {
     this.cacheService,
     this.audioHandler,
     AudioPlayer? player,
-  }) : _player = player ?? AudioPlayer() {
+    TrackPreloadManager? preloadManager,
+  })  : _player = player ?? AudioPlayer(),
+        preloadManager = preloadManager ??
+            TrackPreloadManager(
+              registry: registry,
+              cacheService: cacheService,
+              settingsService: settingsService,
+            ) {
     _initAudioService();
     _initAudioContext();
     _initStreams();
@@ -322,6 +330,7 @@ class AudioPlayerController extends ChangeNotifier {
     _position = Duration.zero;
     _duration = track.duration;
     _isBuffering = true;
+    preloadManager.pause();
     audioHandler?.updateTrack(track);
     if (kIsWeb) {
       WebMediaSessionHelper.updateMetadata(track);
@@ -389,6 +398,7 @@ class AudioPlayerController extends ChangeNotifier {
       }
       await _applyEffectiveVolume();
       _consecutiveErrors = 0;
+      preloadManager.resume();
       _preloadNextTrackIfNeeded();
     } catch (e) {
       debugPrint('[AudioPlayerController] Error playing "${track.title}": $e');
@@ -413,33 +423,13 @@ class AudioPlayerController extends ChangeNotifier {
   }
 
   void _preloadNextTrackIfNeeded() {
-    if (_queue.isEmpty) return;
-    int nextIdx = -1;
-    if (_currentIndex + 1 < _queue.length) {
-      nextIdx = _currentIndex + 1;
-    } else if (_repeatMode == PlaybackRepeatMode.all && _queue.isNotEmpty) {
-      nextIdx = 0;
-    }
-
-    if (nextIdx >= 0 && nextIdx < _queue.length) {
-      final nextTrack = _queue[nextIdx];
-      if (nextTrack.providerId == 'youtube') {
-        try {
-          final yt = registry.allProviders.whereType<YouTubeProvider>().firstOrNull;
-          yt?.preloadTrack(nextTrack);
-        } catch (_) {}
-      }
-
-      // Pre-cache next track in background for gapless offline transition
-      if (settingsService?.autoCacheAudio != false && cacheService != null) {
-        if (!cacheService!.isCached(nextTrack)) {
-          final provider = registry.allProviders.where((p) => p.providerId == nextTrack.providerId).firstOrNull;
-          if (provider != null) {
-            cacheService!.preloadTrack(nextTrack, provider);
-          }
-        }
-      }
-    }
+    if (_queue.isEmpty || _currentIndex < 0) return;
+    preloadManager.schedulePreload(
+      queue: _queue,
+      currentIndex: _currentIndex,
+      isRepeatAll: _repeatMode == PlaybackRepeatMode.all,
+      maxTracks: 10,
+    );
   }
 
   Future<void> playNext({bool isAutoSkipOnError = false}) async {
@@ -651,6 +641,7 @@ class AudioPlayerController extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    preloadManager.cancel();
     await _player.stop();
     _currentTrack = null;
     _position = Duration.zero;
@@ -664,6 +655,7 @@ class AudioPlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    preloadManager.dispose();
     _sleepTimer?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();

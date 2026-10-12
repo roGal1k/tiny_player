@@ -161,6 +161,7 @@ class AudioCacheService extends ChangeNotifier {
   }
 
   Future<File?> cacheTrackInBackground(Track track, String streamUrl) async {
+    if (kIsWeb) return null;
     if (isCached(track)) {
       return getCachedFile(track);
     }
@@ -237,6 +238,7 @@ class AudioCacheService extends ChangeNotifier {
   }
 
   Future<void> preloadTrack(Track track, MusicProvider provider) async {
+    if (kIsWeb) return;
     if (isCached(track)) return;
     try {
       final streamUrl = await provider.getStreamUrl(track);
