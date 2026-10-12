@@ -391,8 +391,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                   Expanded(
                                     child: Text(
                                       _selectedProvider == 'all'
-                                          ? 'Все источники (${allTracks.length} треков)'
-                                          : 'Источник: ${_getProviderName(_selectedProvider)} (${filteredTracks.length} из ${allTracks.length})',
+                                          ? 'Все треки (${allTracks.length})'
+                                          : '${_getProviderName(_selectedProvider)}: ${filteredTracks.length} из ${allTracks.length} треков',
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -594,12 +594,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      track.album ?? track.artist,
+                                      track.artist,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.white.withValues(alpha: 0.6),
+                                        color: Colors.white.withValues(alpha: 0.8),
                                       ),
                                     ),
                                   ),

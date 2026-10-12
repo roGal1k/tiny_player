@@ -100,7 +100,6 @@ class InternetArchiveProvider implements MusicProvider {
       artist: json['creator'] != null 
           ? (json['creator'] is List ? json['creator'].join(', ') : json['creator'].toString()) 
           : 'Unknown Creator',
-      album: 'Internet Archive',
       duration: duration,
       releaseDate: json['date'] != null ? DateTime.tryParse(json['date'].toString()) : null,
       isExplicit: false,

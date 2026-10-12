@@ -90,7 +90,6 @@ class FreesoundProvider implements MusicProvider {
       providerId: providerId,
       title: json['name']?.toString() ?? 'Sound ${json['id']}',
       artist: json['username']?.toString() ?? 'Freesound Creator',
-      album: 'Freesound Library',
       artworkUrl: artworkUrl,
       duration: Duration(milliseconds: (durationSeconds * 1000).toInt()),
       isExplicit: false,

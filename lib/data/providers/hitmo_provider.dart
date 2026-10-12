@@ -185,7 +185,6 @@ class HitmoProvider implements MusicProvider {
           providerId: providerId,
           title: title,
           artist: artist,
-          album: 'Hitmo Music',
           artworkUrl: artworkUrl,
           duration: duration,
           isExplicit: false,
