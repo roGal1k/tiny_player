@@ -953,6 +953,7 @@ class _SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClie
 
     return ListView.builder(
       key: const PageStorageKey<String>('search_screen_results_list'),
+      itemExtent: isPlatformGroup ? null : 72.0,
       itemCount: tracksToDisplay.length,
       itemBuilder: (context, index) {
         final track = tracksToDisplay[index];

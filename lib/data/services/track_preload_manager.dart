@@ -19,6 +19,7 @@ class TrackPreloadManager {
 
   int _sessionEpoch = 0;
   Timer? _delayTimer;
+  Timer? _fastPrewarmTimer;
   bool _isDisposed = false;
   bool _isPaused = false;
   bool _isRunningQueue = false;
@@ -79,17 +80,43 @@ class TrackPreloadManager {
 
     final currentSession = _sessionEpoch;
 
-    // Start background preloading after startDelay
+    // Phase 1: Fast lightweight stream URL pre-warm for the immediate next track
+    if (tracksToPreload.isNotEmpty) {
+      _fastPrewarmTimer = Timer(const Duration(milliseconds: 300), () {
+        if (_isDisposed || currentSession != _sessionEpoch) return;
+        _prewarmNextTrackUrl(tracksToPreload.first);
+      });
+    }
+
+    // Phase 2: Full background audio file caching after startDelay
     _delayTimer = Timer(startDelay, () {
       if (_isDisposed || currentSession != _sessionEpoch) return;
       _runPreloadQueue(tracksToPreload, currentSession);
     });
   }
 
+  Future<void> _prewarmNextTrackUrl(Track track) async {
+    try {
+      if (track.providerId == 'youtube') {
+        final yt = registry.allProviders.whereType<YouTubeProvider>().firstOrNull;
+        yt?.preloadTrack(track);
+      } else {
+        final provider = registry.allProviders
+            .where((p) => p.providerId.toLowerCase() == track.providerId.toLowerCase())
+            .firstOrNull;
+        if (provider != null) {
+          await provider.getStreamUrl(track);
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Cancels any scheduled or active background preloading.
   void cancel() {
     _delayTimer?.cancel();
     _delayTimer = null;
+    _fastPrewarmTimer?.cancel();
+    _fastPrewarmTimer = null;
     _sessionEpoch++;
     _isRunningQueue = false;
     _currentlyPreloadingTrackId = null;

@@ -96,9 +96,7 @@ class AudioCacheService extends ChangeNotifier {
   }
 
   bool isCached(Track track) {
-    if (_cachedTrackIds.contains(track.id)) return true;
-    final file = getCachedFile(track);
-    return file != null;
+    return _cachedTrackIds.contains(track.id);
   }
 
   File? getCachedFile(Track track) {

@@ -60,10 +60,27 @@ class DatabaseHelper {
       dbPath,
       options: OpenDatabaseOptions(
         version: 1,
+        onConfigure: _onConfigureDB,
         onCreate: _createDB,
         onOpen: _onOpenDB,
       ),
     );
+  }
+
+  Future _onConfigureDB(Database db) async {
+    if (!kIsWeb) {
+      try {
+        await db.execute('PRAGMA foreign_keys = ON;');
+        final path = db.path;
+        if (path != inMemoryDatabasePath && path != ':memory:') {
+          await db.execute('PRAGMA journal_mode = WAL;');
+          await db.execute('PRAGMA synchronous = NORMAL;');
+          await db.execute('PRAGMA cache_size = -8000;');
+        }
+      } catch (e) {
+        debugPrint('[DatabaseHelper] PRAGMA tuning notice: $e');
+      }
+    }
   }
 
   Future _onOpenDB(Database db, [int? version]) async {

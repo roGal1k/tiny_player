@@ -31,6 +31,7 @@ class AudioPlayerController extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isBuffering = false;
   Duration _position = Duration.zero;
+  final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
   Duration _duration = Duration.zero;
   String? _errorMessage;
   double _baseVolume = 1.0;
@@ -228,6 +229,7 @@ class AudioPlayerController extends ChangeNotifier {
       if (state == PlayerState.completed) {
         _isPlaying = false;
         _position = Duration.zero;
+        positionNotifier.value = Duration.zero;
         _syncAudioServiceState();
         _onTrackCompleted();
       }
@@ -251,15 +253,10 @@ class AudioPlayerController extends ChangeNotifier {
       }
     });
 
-    DateTime lastPositionNotify = DateTime.fromMillisecondsSinceEpoch(0);
     _positionSubscription = _player.onPositionChanged.listen((pos) {
       _position = pos;
+      positionNotifier.value = pos;
       _syncAudioServiceState();
-      final now = DateTime.now();
-      if (now.difference(lastPositionNotify).inMilliseconds >= 250) {
-        lastPositionNotify = now;
-        notifyListeners();
-      }
     }, onError: (err) {
       debugPrint('[AudioPlayerController] Position stream error: $err');
     });
@@ -328,6 +325,7 @@ class AudioPlayerController extends ChangeNotifier {
   Future<void> _executePlay(Track track) async {
     _currentTrack = track;
     _position = Duration.zero;
+    positionNotifier.value = Duration.zero;
     _duration = track.duration;
     _isBuffering = true;
     preloadManager.pause();
@@ -636,6 +634,7 @@ class AudioPlayerController extends ChangeNotifier {
   Future<void> seek(Duration position) async {
     await _player.seek(position);
     _position = position;
+    positionNotifier.value = position;
     _syncAudioServiceState();
     notifyListeners();
   }
@@ -645,6 +644,7 @@ class AudioPlayerController extends ChangeNotifier {
     await _player.stop();
     _currentTrack = null;
     _position = Duration.zero;
+    positionNotifier.value = Duration.zero;
     _duration = Duration.zero;
     _isPlaying = false;
     _isBuffering = false;
@@ -656,6 +656,7 @@ class AudioPlayerController extends ChangeNotifier {
   @override
   void dispose() {
     preloadManager.dispose();
+    positionNotifier.dispose();
     _sleepTimer?.cancel();
     _playerStateSubscription?.cancel();
     _positionSubscription?.cancel();

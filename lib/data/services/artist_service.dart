@@ -15,6 +15,7 @@ class ArtistService extends ChangeNotifier {
   final http.Client _client;
 
   List<Artist> _favoriteArtists = [];
+  List<Artist>? _cachedLibraryArtists;
   bool _isLoading = false;
 
   ArtistService({
@@ -27,6 +28,18 @@ class ArtistService extends ChangeNotifier {
         _libraryService = libraryService,
         _client = client ?? http.Client() {
     loadFavorites();
+    _libraryService?.addListener(_invalidateLibraryArtistsCache);
+  }
+
+  void _invalidateLibraryArtistsCache() {
+    _cachedLibraryArtists = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _libraryService?.removeListener(_invalidateLibraryArtistsCache);
+    super.dispose();
   }
 
   List<Artist> get favoriteArtists => List.unmodifiable(_favoriteArtists);
@@ -97,6 +110,8 @@ class ArtistService extends ChangeNotifier {
 
   List<Artist> getArtistsFromLibrary() {
     if (_libraryService == null) return [];
+    if (_cachedLibraryArtists != null) return _cachedLibraryArtists!;
+
     final tracks = _libraryService.tracks;
     final Map<String, (int, String?)> artistMap = {};
 
@@ -122,7 +137,8 @@ class ArtistService extends ChangeNotifier {
     }).toList();
 
     list.sort((a, b) => (b.trackCount ?? 0).compareTo(a.trackCount ?? 0));
-    return list;
+    _cachedLibraryArtists = List.unmodifiable(list);
+    return _cachedLibraryArtists!;
   }
 
   Future<List<Artist>> searchArtists(String query) async {

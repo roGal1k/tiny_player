@@ -328,6 +328,8 @@ class QueueScreen extends StatelessWidget {
                                           width: 40,
                                           height: 40,
                                           fit: BoxFit.cover,
+                                          cacheWidth: 80,
+                                          cacheHeight: 80,
                                           errorBuilder: (ctx, err, stack) =>
                                               Container(
                                             width: 40,

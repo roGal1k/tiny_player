@@ -55,19 +55,21 @@ class _AudioVisualizerWidgetState extends State<AudioVisualizerWidget>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          size: Size(double.infinity, widget.height),
-          painter: _VisualizerPainter(
-            animationValue: _controller.value,
-            color: widget.color,
-            isPlaying: widget.isPlaying,
-            barCount: widget.barCount,
-          ),
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return CustomPaint(
+            size: Size(double.infinity, widget.height),
+            painter: _VisualizerPainter(
+              animationValue: _controller.value,
+              color: widget.color,
+              isPlaying: widget.isPlaying,
+              barCount: widget.barCount,
+            ),
+          );
+        },
+      ),
     );
   }
 }

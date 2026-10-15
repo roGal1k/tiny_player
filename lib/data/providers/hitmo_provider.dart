@@ -265,16 +265,20 @@ class HitmoProvider implements MusicProvider {
         ..headers.addAll(_headers);
 
       final streamedResp = await _client.send(req).timeout(const Duration(milliseconds: 2500));
-      if (streamedResp.statusCode == 302 ||
-          streamedResp.statusCode == 301 ||
-          streamedResp.statusCode == 307 ||
-          streamedResp.statusCode == 308) {
-        final loc = streamedResp.headers['location'];
-        if (loc != null && loc.isNotEmpty) {
-          return loc.startsWith('http') ? loc : Uri.parse(url).resolve(loc).toString();
+      try {
+        if (streamedResp.statusCode == 302 ||
+            streamedResp.statusCode == 301 ||
+            streamedResp.statusCode == 307 ||
+            streamedResp.statusCode == 308) {
+          final loc = streamedResp.headers['location'];
+          if (loc != null && loc.isNotEmpty) {
+            return loc.startsWith('http') ? loc : Uri.parse(url).resolve(loc).toString();
+          }
+        } else if (streamedResp.statusCode == 200) {
+          return url;
         }
-      } else if (streamedResp.statusCode == 200) {
-        return url;
+      } finally {
+        await streamedResp.stream.drain().catchError((_) => null);
       }
     } catch (_) {}
     return null;

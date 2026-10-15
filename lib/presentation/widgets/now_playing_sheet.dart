@@ -276,7 +276,6 @@ class NowPlayingSheet extends StatelessWidget {
 
     final theme = Theme.of(context);
     final providerColor = _getProviderColor(track.providerId);
-    final currentPos = controller.position;
     final totalDuration = controller.duration.inMilliseconds > 0
         ? controller.duration
         : track.duration;
@@ -284,7 +283,6 @@ class NowPlayingSheet extends StatelessWidget {
     final maxMs = totalDuration.inMilliseconds > 0
         ? totalDuration.inMilliseconds.toDouble()
         : 1.0;
-    final currentMs = currentPos.inMilliseconds.toDouble().clamp(0.0, maxMs);
 
     return Container(
       decoration: BoxDecoration(
@@ -541,47 +539,58 @@ class NowPlayingSheet extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Wide Scrubber / Slider
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 6,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-              activeTrackColor: providerColor,
-              inactiveTrackColor: Colors.white12,
-              thumbColor: Colors.white,
-            ),
-            child: Slider(
-              value: currentMs,
-              min: 0.0,
-              max: maxMs,
-              onChanged: (val) {
-                controller.seek(Duration(milliseconds: val.toInt()));
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _formatDuration(currentPos),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                    color: Colors.white60,
+          ValueListenableBuilder<Duration>(
+            valueListenable: controller.positionNotifier,
+            builder: (context, currentPos, _) {
+              final currentMs = currentPos.inMilliseconds.toDouble().clamp(0.0, maxMs);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 6,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                      activeTrackColor: providerColor,
+                      inactiveTrackColor: Colors.white12,
+                      thumbColor: Colors.white,
+                    ),
+                    child: Slider(
+                      value: currentMs,
+                      min: 0.0,
+                      max: maxMs,
+                      onChanged: (val) {
+                        controller.seek(Duration(milliseconds: val.toInt()));
+                      },
+                    ),
                   ),
-                ),
-                Text(
-                  _formatDuration(totalDuration),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                    color: Colors.white60,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(currentPos),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            color: Colors.white60,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(totalDuration),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            color: Colors.white60,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 12),

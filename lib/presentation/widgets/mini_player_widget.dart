@@ -56,14 +56,7 @@ class MiniPlayerWidget extends StatelessWidget {
 
     final theme = Theme.of(context);
     final isMobile = MediaQuery.of(context).size.width <= 680;
-    final currentPos = controller.position;
-    final totalDuration = controller.duration.inMilliseconds > 0 
-        ? controller.duration 
-        : track.duration;
-
-    final progress = totalDuration.inMilliseconds > 0
-        ? (currentPos.inMilliseconds / totalDuration.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
+    final providerColor = _getProviderColor(track.providerId);
 
     return Container(
       decoration: BoxDecoration(
@@ -85,44 +78,7 @@ class MiniPlayerWidget extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Улучшенный прогресс-бар сверху мини-плеера (увеличенная зона касания и полоса 6px)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (details) {
-              final box = context.findRenderObject() as RenderBox?;
-              if (box != null && totalDuration.inMilliseconds > 0) {
-                final localX = details.localPosition.dx;
-                final ratio = (localX / box.size.width).clamp(0.0, 1.0);
-                controller.seek(Duration(milliseconds: (ratio * totalDuration.inMilliseconds).toInt()));
-              }
-            },
-            onTapDown: (details) {
-              final box = context.findRenderObject() as RenderBox?;
-              if (box != null && totalDuration.inMilliseconds > 0) {
-                final localX = details.localPosition.dx;
-                final ratio = (localX / box.size.width).clamp(0.0, 1.0);
-                controller.seek(Duration(milliseconds: (ratio * totalDuration.inMilliseconds).toInt()));
-              }
-            },
-            child: Container(
-              height: 14,
-              alignment: Alignment.center,
-              color: Colors.transparent,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: SizedBox(
-                  height: 6,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.white12,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _getProviderColor(track.providerId),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _MiniPlayerProgressBar(track: track, providerColor: providerColor),
           if (controller.errorMessage != null)
             Container(
               color: Colors.red.withValues(alpha: 0.85),
@@ -225,13 +181,21 @@ class MiniPlayerWidget extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            '${_formatDuration(currentPos)} / ${_formatDuration(totalDuration)}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontFeatures: [FontFeature.tabularFigures()],
-                              color: Colors.white54,
-                            ),
+                          ValueListenableBuilder<Duration>(
+                            valueListenable: controller.positionNotifier,
+                            builder: (context, currentPos, _) {
+                              final totalDuration = controller.duration.inMilliseconds > 0
+                                  ? controller.duration
+                                  : track.duration;
+                              return Text(
+                                '${_formatDuration(currentPos)} / ${_formatDuration(totalDuration)}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                  color: Colors.white54,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -714,3 +678,66 @@ class MiniPlayerWidget extends StatelessWidget {
   }
 }
 
+class _MiniPlayerProgressBar extends StatelessWidget {
+  final Track track;
+  final Color providerColor;
+
+  const _MiniPlayerProgressBar({
+    required this.track,
+    required this.providerColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.read<AudioPlayerController>();
+
+    return ValueListenableBuilder<Duration>(
+      valueListenable: controller.positionNotifier,
+      builder: (context, currentPos, _) {
+        final totalDuration = controller.duration.inMilliseconds > 0
+            ? controller.duration
+            : track.duration;
+
+        final progress = totalDuration.inMilliseconds > 0
+            ? (currentPos.inMilliseconds / totalDuration.inMilliseconds).clamp(0.0, 1.0)
+            : 0.0;
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: (details) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box != null && totalDuration.inMilliseconds > 0) {
+              final localX = details.localPosition.dx;
+              final ratio = (localX / box.size.width).clamp(0.0, 1.0);
+              controller.seek(Duration(milliseconds: (ratio * totalDuration.inMilliseconds).toInt()));
+            }
+          },
+          onTapDown: (details) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box != null && totalDuration.inMilliseconds > 0) {
+              final localX = details.localPosition.dx;
+              final ratio = (localX / box.size.width).clamp(0.0, 1.0);
+              controller.seek(Duration(milliseconds: (ratio * totalDuration.inMilliseconds).toInt()));
+            }
+          },
+          child: Container(
+            height: 14,
+            alignment: Alignment.center,
+            color: Colors.transparent,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: SizedBox(
+                height: 6,
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: Colors.white12,
+                  valueColor: AlwaysStoppedAnimation<Color>(providerColor),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
