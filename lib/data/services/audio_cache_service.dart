@@ -23,6 +23,8 @@ class AudioCacheService extends ChangeNotifier {
         _client = client ?? http.Client(),
         _cacheDir = customCacheDir ?? defaultCacheDir;
 
+  VoidCallback? onCacheChanged;
+
   static String get defaultCacheDir {
     if (kIsWeb) return '/core_player_cache';
     final home = Platform.environment['HOME'];
@@ -220,6 +222,7 @@ class AudioCacheService extends ChangeNotifier {
           );
 
           notifyListeners();
+          onCacheChanged?.call();
           debugPrint('[AudioCacheService] Successfully cached "${track.title}" ($fileSize bytes) -> $finalPath');
           return finalFile;
         } else {

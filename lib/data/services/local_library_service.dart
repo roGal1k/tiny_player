@@ -19,6 +19,8 @@ class LocalLibraryService extends ChangeNotifier {
   bool get isScanning => _isScanning;
   String? get statusMessage => _statusMessage;
 
+  VoidCallback? onLibraryChanged;
+
   bool isFavorite(String trackId) {
     return _tracks.any((t) => t.id == trackId);
   }
@@ -29,6 +31,7 @@ class LocalLibraryService extends ChangeNotifier {
       await _dbHelper.removeFromLibrary(track.id);
       _tracks.removeWhere((t) => t.id == track.id);
       notifyListeners();
+      onLibraryChanged?.call();
       return false;
     } else {
       await _dbHelper.addToLibrary(track);
@@ -36,6 +39,7 @@ class LocalLibraryService extends ChangeNotifier {
         _tracks.insert(0, track);
       }
       notifyListeners();
+      onLibraryChanged?.call();
       return true;
     }
   }

@@ -18,6 +18,9 @@ class FakeLocalLibraryService extends ChangeNotifier implements LocalLibraryServ
   FakeLocalLibraryService([this._tracks = const []]);
 
   @override
+  VoidCallback? onLibraryChanged;
+
+  @override
   List<Track> get tracks => _tracks;
 
   @override

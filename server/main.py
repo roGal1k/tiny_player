@@ -76,6 +76,10 @@ async def startup_event():
             await db.execute("ALTER TABLE user_sync ADD COLUMN artists_json TEXT DEFAULT '[]'")
         except Exception:
             pass
+        try:
+            await db.execute("ALTER TABLE user_sync ADD COLUMN cached_json TEXT DEFAULT '[]'")
+        except Exception:
+            pass
         await db.commit()
 
     shared_proxy_client = httpx.AsyncClient(
@@ -165,6 +169,7 @@ class AuthRequest(BaseModel):
 class SyncPushRequest(BaseModel):
     library: List[Dict[str, Any]] = []
     artists: List[Dict[str, Any]] = []
+    cached_tracks: List[Dict[str, Any]] = []
     playlists: List[Dict[str, Any]] = []
     history: List[Dict[str, Any]] = []
     settings: Dict[str, Any] = {}
@@ -241,6 +246,7 @@ async def sync_pull(user: dict = Depends(get_current_user), db: aiosqlite.Connec
         return {
             "library": json.loads(row["library_json"] or "[]"),
             "artists": json.loads(row["artists_json"] or "[]") if "artists_json" in row_keys and row["artists_json"] else [],
+            "cached_tracks": json.loads(row["cached_json"] or "[]") if "cached_json" in row_keys and row["cached_json"] else [],
             "playlists": json.loads(row["playlists_json"] or "[]"),
             "history": json.loads(row["history_json"] or "[]"),
             "settings": json.loads(row["settings_json"] or "{}"),
@@ -266,6 +272,7 @@ async def sync_push(
     row_keys = row.keys() if row else []
     server_library: List[Dict[str, Any]] = json.loads(row["library_json"] or "[]") if row else []
     server_artists: List[Dict[str, Any]] = json.loads(row["artists_json"] or "[]") if row and "artists_json" in row_keys and row["artists_json"] else []
+    server_cached: List[Dict[str, Any]] = json.loads(row["cached_json"] or "[]") if row and "cached_json" in row_keys and row["cached_json"] else []
     server_playlists: List[Dict[str, Any]] = json.loads(row["playlists_json"] or "[]") if row else []
     server_history: List[Dict[str, Any]] = json.loads(row["history_json"] or "[]") if row else []
     server_settings: Dict[str, Any] = json.loads(row["settings_json"] or "{}") if row else {}
@@ -288,7 +295,23 @@ async def sync_push(
             seen_keys.add(key)
             merged_library.append(t)
 
-    # 3. Merge artists by name (case-insensitive)
+    # 3. Merge cached tracks by unique key: (providerId, id)
+    seen_cached_keys = set()
+    merged_cached = []
+
+    for t in req.cached_tracks:
+        key = (t.get("providerId") or t.get("provider_id"), str(t.get("id")))
+        if key[0] and key[1] and key not in seen_cached_keys:
+            seen_cached_keys.add(key)
+            merged_cached.append(t)
+
+    for t in server_cached:
+        key = (t.get("providerId") or t.get("provider_id"), str(t.get("id")))
+        if key[0] and key[1] and key not in seen_cached_keys:
+            seen_cached_keys.add(key)
+            merged_cached.append(t)
+
+    # 4. Merge artists by name (case-insensitive)
     seen_artists = set()
     merged_artists = []
 
@@ -311,11 +334,12 @@ async def sync_push(
 
     # Save to SQLite DB
     await db.execute("""
-        INSERT INTO user_sync (user_id, library_json, artists_json, playlists_json, history_json, settings_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO user_sync (user_id, library_json, artists_json, cached_json, playlists_json, history_json, settings_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             library_json = excluded.library_json,
             artists_json = excluded.artists_json,
+            cached_json = excluded.cached_json,
             playlists_json = excluded.playlists_json,
             history_json = excluded.history_json,
             settings_json = excluded.settings_json,
@@ -324,6 +348,7 @@ async def sync_push(
         user_id,
         json.dumps(merged_library),
         json.dumps(merged_artists),
+        json.dumps(merged_cached),
         json.dumps(merged_playlists),
         json.dumps(merged_history),
         json.dumps(merged_settings),
@@ -339,6 +364,7 @@ async def sync_push(
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "library": merged_library,
         "artists": merged_artists,
+        "cached_tracks": merged_cached,
         "playlists": merged_playlists,
         "history": merged_history,
         "settings": merged_settings,
@@ -349,6 +375,7 @@ async def sync_push(
         "status": "success",
         "library": merged_library,
         "artists": merged_artists,
+        "cached_tracks": merged_cached,
         "playlists": merged_playlists,
         "settings": merged_settings,
         "updated_at": now_ms,
@@ -369,6 +396,7 @@ async def get_user_file_info(user: dict = Depends(get_current_user), db: aiosqli
         row_keys = row.keys() if row else []
         tracks_count = len(json.loads(row["library_json"])) if row and row["library_json"] else 0
         artists_count = len(json.loads(row["artists_json"])) if row and "artists_json" in row_keys and row["artists_json"] else 0
+        cached_count = len(json.loads(row["cached_json"])) if row and "cached_json" in row_keys and row["cached_json"] else 0
         updated_at = row["updated_at"] if row else 0
 
     return {
@@ -379,6 +407,7 @@ async def get_user_file_info(user: dict = Depends(get_current_user), db: aiosqli
         "updated_at": updated_at,
         "tracks_count": tracks_count,
         "artists_count": artists_count,
+        "cached_count": cached_count,
     }
 
 @app.get("/api/user/file/download")
@@ -399,6 +428,7 @@ async def download_user_file(user: dict = Depends(get_current_user), db: aiosqli
                 "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "library": json.loads(row["library_json"] or "[]"),
                 "artists": json.loads(row["artists_json"] or "[]") if "artists_json" in row_keys and row["artists_json"] else [],
+                "cached_tracks": json.loads(row["cached_json"] or "[]") if "cached_json" in row_keys and row["cached_json"] else [],
                 "playlists": json.loads(row["playlists_json"] or "[]"),
                 "history": json.loads(row["history_json"] or "[]"),
                 "settings": json.loads(row["settings_json"] or "{}"),

@@ -16,6 +16,7 @@ class VpsFileInfo {
   final int? updatedAt;
   final int tracksCount;
   final int artistsCount;
+  final int cachedCount;
 
   const VpsFileInfo({
     required this.filename,
@@ -25,6 +26,7 @@ class VpsFileInfo {
     this.updatedAt,
     required this.tracksCount,
     required this.artistsCount,
+    this.cachedCount = 0,
   });
 
   factory VpsFileInfo.fromMap(Map<String, dynamic> map) {
@@ -36,6 +38,7 @@ class VpsFileInfo {
       updatedAt: map['updated_at'] as int?,
       tracksCount: map['tracks_count'] as int? ?? 0,
       artistsCount: map['artists_count'] as int? ?? 0,
+      cachedCount: map['cached_count'] as int? ?? 0,
     );
   }
 }
@@ -89,7 +92,10 @@ class SyncService extends ChangeNotifier {
       }
       notifyListeners();
 
-      if (isLoggedIn) {
+      if (!isLoggedIn) {
+        // Auto-login to unified ecosystem profile
+        await login('admin', 'bwatMP1234');
+      } else {
         await syncNow();
         await fetchVpsFileInfo();
       }
@@ -225,12 +231,15 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Get local tracks and favorite artists
+      // 1. Get local tracks, favorite artists, and cached tracks
       final localTracks = await _dbHelper.getLibraryTracks();
       final tracksPayload = localTracks.map((t) => t.toMap()).toList();
 
       final localArtists = await _dbHelper.getFavoriteArtists();
       final artistsPayload = localArtists.map((a) => a.toMap()).toList();
+
+      final localCachedTracks = await _dbHelper.getCachedTracks();
+      final cachedPayload = localCachedTracks.map((t) => t.toMap()).toList();
 
       // 2. Push to server and get merged results
       final uri = Uri.parse('$_serverUrl/api/sync/push');
@@ -243,6 +252,7 @@ class SyncService extends ChangeNotifier {
         body: json.encode({
           'library': tracksPayload,
           'artists': artistsPayload,
+          'cached_tracks': cachedPayload,
           'playlists': [],
           'history': [],
           'settings': {},
@@ -254,6 +264,7 @@ class SyncService extends ChangeNotifier {
         final data = json.decode(response.body);
         final serverLibrary = data['library'] as List? ?? [];
         final serverArtists = data['artists'] as List? ?? [];
+        final serverCached = data['cached_tracks'] as List? ?? [];
 
         // 3. Merge server tracks into local database
         final localTrackIds = localTracks.map((t) => t.id).toSet();

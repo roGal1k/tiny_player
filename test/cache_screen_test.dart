@@ -14,6 +14,9 @@ class FakeAudioCacheService extends ChangeNotifier implements AudioCacheService 
   FakeAudioCacheService(this._tracks);
 
   @override
+  VoidCallback? onCacheChanged;
+
+  @override
   String get cacheDir => '/tmp/fake_cache';
 
   @override

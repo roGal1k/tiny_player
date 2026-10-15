@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../data/services/download_manager.dart';
+import '../../data/services/local_library_service.dart';
 import '../../data/services/sync_service.dart';
 
 class SyncAccountScreen extends StatefulWidget {
@@ -207,6 +209,11 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
                       label: Text('${vpsFile?.artistsCount ?? "—"} авторов'),
                       backgroundColor: Colors.white.withOpacity(0.06),
                     ),
+                    Chip(
+                      avatar: const Icon(Icons.offline_pin, size: 16, color: Colors.greenAccent),
+                      label: Text('${vpsFile?.cachedCount ?? "—"} в кэше'),
+                      backgroundColor: Colors.white.withOpacity(0.06),
+                    ),
                   ],
                 ),
               ],
@@ -238,6 +245,43 @@ class _SyncAccountScreenState extends State<SyncAccountScreen> {
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
+        ),
+        const SizedBox(height: 10),
+
+        // Batch offline download of entire cloud library
+        Builder(
+          builder: (ctx) {
+            final downloadManager = Provider.of<DownloadManager?>(ctx);
+            final libraryService = Provider.of<LocalLibraryService?>(ctx);
+            if (downloadManager == null || libraryService == null) return const SizedBox.shrink();
+
+            final tracks = libraryService.tracks.where((t) => t.isDownloadable).toList();
+            return OutlinedButton.icon(
+              onPressed: tracks.isEmpty
+                  ? null
+                  : () async {
+                      final count = await downloadManager.downloadAll(tracks);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(count > 0
+                                ? 'Запущено скачивание в офлайн: $count треков'
+                                : 'Все треки уже скачаны'),
+                          ),
+                        );
+                      }
+                    },
+              icon: const Icon(Icons.download_for_offline_outlined, color: Colors.greenAccent),
+              label: Text(
+                'Скачать все треки аккаунта на устройство (${tracks.length})',
+                style: const TextStyle(color: Colors.greenAccent),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: const BorderSide(color: Colors.greenAccent),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 10),
 
