@@ -558,6 +558,13 @@ async def proxy_stream(request: Request, url: str = Query(..., description="Targ
     if range_header:
         req_headers["Range"] = range_header
 
+    # For Google Video and YouTube streams, omit proxy forwarding IP headers
+    # so Google Video does not reject the signed IP matching with 403 Forbidden
+    if "googlevideo.com" in url or "youtube" in url:
+        req_headers.pop("X-Forwarded-For", None)
+        req_headers.pop("X-Real-IP", None)
+        req_headers.pop("CF-Connecting-IP", None)
+
     client = shared_proxy_client or httpx.AsyncClient(follow_redirects=True, timeout=30.0)
     candidates = get_candidate_stream_urls(url)
 

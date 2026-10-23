@@ -153,7 +153,15 @@ class DownloadManager extends ChangeNotifier {
       final safeTitle = _sanitizeFileName(track.title);
       final fileName = '$safeArtist - $safeTitle.mp3';
       final filePath = p.join(downloadDir, fileName);
+      final tempFilePath = '$filePath.part';
       final targetFile = File(filePath);
+      final tempFile = File(tempFilePath);
+
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {}
+      }
 
       final client = _client;
       final isHls = streamUrl.contains('.m3u8') || streamUrl.contains('/hls');
@@ -180,7 +188,7 @@ class DownloadManager extends ChangeNotifier {
           throw Exception('No audio segments found in HLS stream');
         }
 
-        final sink = targetFile.openWrite();
+        final sink = tempFile.openWrite();
         for (int i = 0; i < segmentUris.length; i++) {
           final segRes = await client.get(segmentUris[i]);
           if (segRes.statusCode == 200) {
@@ -199,7 +207,7 @@ class DownloadManager extends ChangeNotifier {
 
         if (response.statusCode >= 200 && response.statusCode < 300) {
           task.totalBytes = response.contentLength ?? 0;
-          final sink = targetFile.openWrite();
+          final sink = tempFile.openWrite();
 
           await response.stream.listen((chunk) {
             sink.add(chunk);
@@ -216,6 +224,21 @@ class DownloadManager extends ChangeNotifier {
           throw Exception('Download HTTP failed: ${response.statusCode}');
         }
       }
+
+      final downloadedSize = await tempFile.length();
+      final expectedLength = task.totalBytes;
+      final isValid = (expectedLength > 0 && downloadedSize >= expectedLength) || downloadedSize > 4096;
+      if (!isValid) {
+        if (await tempFile.exists()) await tempFile.delete();
+        throw Exception('Downloaded file is too small or invalid ($downloadedSize bytes)');
+      }
+
+      if (await targetFile.exists()) {
+        try {
+          await targetFile.delete();
+        } catch (_) {}
+      }
+      await tempFile.rename(filePath);
 
       task.status = DownloadStatus.completed;
       task.progress = 1.0;
@@ -242,6 +265,14 @@ class DownloadManager extends ChangeNotifier {
     } catch (e) {
       task.status = DownloadStatus.failed;
       task.error = e.toString();
+      // Clean up any incomplete .part file
+      try {
+        final safeArtist = _sanitizeFileName(track.artist);
+        final safeTitle = _sanitizeFileName(track.title);
+        final downloadDir = await _getDownloadDirectory();
+        final part = File(p.join(downloadDir, '$safeArtist - $safeTitle.mp3.part'));
+        if (await part.exists()) await part.delete();
+      } catch (_) {}
     } finally {
       notifyListeners();
     }

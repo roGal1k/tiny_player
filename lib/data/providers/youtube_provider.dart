@@ -195,9 +195,19 @@ class YouTubeProvider implements MusicProvider {
     try {
       final manifest = await _yt.videos.streamsClient.getManifest(VideoId(track.id));
 
-      // 1. Prefer pure audio streams (highest bitrate, no video track, plays instantly in all engines)
+      // 1. Prefer pure audio streams (highest bitrate M4A/AAC, no video track, natively supported everywhere)
       final audioStreams = manifest.audioOnly;
       if (audioStreams.isNotEmpty) {
+        final m4aStreams = audioStreams.where((s) {
+          return s.container == StreamContainer.mp4 ||
+              s.codec.mimeType.contains('mp4') ||
+              s.codec.mimeType.contains('aac');
+        }).toList();
+
+        if (m4aStreams.isNotEmpty) {
+          return m4aStreams.withHighestBitrate().url.toString();
+        }
+
         return audioStreams.withHighestBitrate().url.toString();
       }
 

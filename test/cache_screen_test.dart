@@ -41,6 +41,11 @@ class FakeAudioCacheService extends ChangeNotifier implements AudioCacheService 
   }
 
   @override
+  Future<void> evictTrack(Track track) async {
+    await removeTrackFromCache(track);
+  }
+
+  @override
   Future<void> clearCache() async {
     _tracks.clear();
     notifyListeners();

@@ -78,7 +78,7 @@ class SyncService extends ChangeNotifier {
   String? get statusMessage => _statusMessage;
   VpsFileInfo? get vpsFileInfo => _vpsFileInfo;
 
-  Future<void> init() async {
+  Future<void> init({bool triggerBackgroundSync = false}) async {
     try {
       final savedUrl = await _dbHelper.getSetting('sync_server_url');
       if (savedUrl != null && savedUrl.isNotEmpty) {
@@ -93,11 +93,16 @@ class SyncService extends ChangeNotifier {
       notifyListeners();
 
       if (!isLoggedIn) {
-        // Auto-login to unified ecosystem profile
-        await login('admin', 'bwatMP1234');
+        if (triggerBackgroundSync) {
+          unawaited(login('admin', 'bwatMP1234'));
+        }
       } else {
-        await syncNow();
-        await fetchVpsFileInfo();
+        if (triggerBackgroundSync) {
+          unawaited(syncNow().then((_) => fetchVpsFileInfo()));
+        } else {
+          await syncNow();
+          await fetchVpsFileInfo();
+        }
       }
     } catch (e) {
       if (kDebugMode) {

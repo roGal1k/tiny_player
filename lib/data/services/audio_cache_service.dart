@@ -204,13 +204,38 @@ class AudioCacheService extends ChangeNotifier {
       });
 
       final streamedResponse = await _client.send(request);
-      if (streamedResponse.statusCode >= 200 && streamedResponse.statusCode < 300) {
+      final contentType = streamedResponse.headers['content-type']?.toLowerCase() ?? '';
+      final isForbiddenContentType = contentType.contains('text/html') ||
+          contentType.contains('application/json') ||
+          contentType.contains('text/plain');
+
+      if (streamedResponse.statusCode >= 200 &&
+          streamedResponse.statusCode < 300 &&
+          !isForbiddenContentType) {
         final sink = partFile.openWrite();
         await streamedResponse.stream.pipe(sink);
         await sink.close();
 
         final fileSize = await partFile.length();
-        if (fileSize > 4096) {
+        final expectedLength = streamedResponse.contentLength ?? 0;
+        final isComplete = expectedLength <= 0 || fileSize >= (expectedLength * 0.95).toInt();
+
+        // Check if header is not HTML / JSON error text
+        bool isNotHtml = true;
+        if (fileSize >= 16) {
+          final raf = await partFile.open();
+          final headerBytes = await raf.read(16);
+          await raf.close();
+          final headerStr = String.fromCharCodes(headerBytes).toLowerCase();
+          if (headerStr.contains('<html') ||
+              headerStr.contains('<!doc') ||
+              headerStr.startsWith('{"error') ||
+              headerStr.startsWith('{"detail')) {
+            isNotHtml = false;
+          }
+        }
+
+        if (fileSize > 4096 && isComplete && isNotHtml) {
           final finalFile = await partFile.rename(finalPath);
           _cachedTrackIds.add(track.id);
           _cachedFilePaths[track.id] = finalFile.path;
@@ -227,7 +252,11 @@ class AudioCacheService extends ChangeNotifier {
           return finalFile;
         } else {
           if (await partFile.exists()) await partFile.delete();
+          debugPrint('[AudioCacheService] Discarded invalid cache file for "${track.title}" (size: $fileSize, expected: $expectedLength, isNotHtml: $isNotHtml)');
         }
+      } else {
+        if (await partFile.exists()) await partFile.delete();
+        debugPrint('[AudioCacheService] Rejected caching "${track.title}": HTTP ${streamedResponse.statusCode}, Content-Type: $contentType');
       }
     } catch (e) {
       debugPrint('[AudioCacheService] cacheTrackInBackground failed for "${track.title}": $e');
@@ -236,6 +265,10 @@ class AudioCacheService extends ChangeNotifier {
     }
 
     return null;
+  }
+
+  Future<void> evictTrack(Track track) async {
+    await removeTrackFromCache(track);
   }
 
   Future<void> preloadTrack(Track track, MusicProvider provider) async {

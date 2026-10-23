@@ -52,7 +52,7 @@ void main() async {
     audioCacheService.init(),
     localLibraryService.loadLibrary(),
     equalizerService.init(),
-    syncService.init(),
+    syncService.init(triggerBackgroundSync: true),
     CoreAudioHandler.initHandler(),
   ]);
 

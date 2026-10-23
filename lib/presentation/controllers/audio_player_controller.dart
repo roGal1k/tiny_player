@@ -11,6 +11,7 @@ import '../../data/services/track_preload_manager.dart';
 import '../../data/services/core_audio_handler.dart';
 import '../../data/services/web_proxy_helper.dart';
 import '../../data/services/web_media_session_helper.dart';
+import '../../data/services/full_track_resolver.dart';
 
 enum PlaybackRepeatMode {
   off,
@@ -25,6 +26,7 @@ class AudioPlayerController extends ChangeNotifier {
   final AudioCacheService? cacheService;
   final CoreAudioHandler? audioHandler;
   final TrackPreloadManager preloadManager;
+  final FullTrackResolver fullTrackResolver;
   final AudioPlayer _player;
 
   Track? _currentTrack;
@@ -61,7 +63,9 @@ class AudioPlayerController extends ChangeNotifier {
     this.audioHandler,
     AudioPlayer? player,
     TrackPreloadManager? preloadManager,
+    FullTrackResolver? fullTrackResolver,
   })  : _player = player ?? AudioPlayer(),
+        fullTrackResolver = fullTrackResolver ?? FullTrackResolver(registry: registry),
         preloadManager = preloadManager ??
             TrackPreloadManager(
               registry: registry,
@@ -337,21 +341,33 @@ class AudioPlayerController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      bool playedFromLocal = false;
+
       // 1. Check if track is cached in AudioCacheService for instant offline playback
       final cachedFile = cacheService?.getCachedFile(track);
       if (cachedFile != null) {
         debugPrint('[AudioPlayerController] Playing from audio cache: ${cachedFile.path}');
-        await _player.play(DeviceFileSource(cachedFile.path));
+        try {
+          await _player.play(DeviceFileSource(cachedFile.path));
+          playedFromLocal = true;
+        } catch (cacheErr) {
+          debugPrint('[AudioPlayerController] Corrupted cache detected for "${track.title}": $cacheErr. Evicting and falling back to stream.');
+          await cacheService?.evictTrack(track);
+        }
       } else if (!kIsWeb && track.sourceUrl.isNotEmpty && File(track.sourceUrl).existsSync()) {
         debugPrint('[AudioPlayerController] Playing from local file: ${track.sourceUrl}');
-        await _player.play(DeviceFileSource(track.sourceUrl));
-      } else {
-        final provider = registry.activeProviders.firstWhere(
-          (p) => p.providerId == track.providerId,
-          orElse: () => throw Exception('Provider ${track.providerId} not found'),
-        );
+        try {
+          await _player.play(DeviceFileSource(track.sourceUrl));
+          playedFromLocal = true;
+        } catch (localErr) {
+          debugPrint('[AudioPlayerController] Corrupted local file for "${track.title}": $localErr. Falling back to stream.');
+        }
+      }
 
-        final streamUrl = await provider.getStreamUrl(track);
+      if (!playedFromLocal) {
+        // Resolve stream (uses FullTrackResolver for Deezer / 30s previews)
+        final resolved = await fullTrackResolver.resolveStream(track);
+        final streamUrl = resolved.streamUrl;
         final effectiveUrl = WebProxyHelper.proxyStreamUrl(streamUrl);
 
         try {
